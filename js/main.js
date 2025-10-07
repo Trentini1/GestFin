@@ -374,6 +374,8 @@ appView.addEventListener('change', async (e) => {
                 const imageData = await extractPdfImage(file);
                 const data = await callGeminiForAnalysis(imageData);
                 
+                console.log('Dados recebidos da IA:', data); 
+                
                 let os_pc = data.os || '';
                 if (data.pc) { os_pc = os_pc ? `${os_pc} / ${data.pc}` : data.pc; }
                 const valorTotal = data.valorTotal || 0;
