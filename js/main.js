@@ -1,13 +1,11 @@
-// js/main.js
-
 // Firebase SDK
-import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, doc, addDoc, getDoc, deleteDoc, onSnapshot, query, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { collection, doc, addDoc, getDoc, deleteDoc, onSnapshot, query, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // Módulos locais
 import { auth, db } from './firebase-config.js';
 import { extractPdfImage, callGeminiForAnalysis } from './api.js';
-import { getGiroTotal, animateCountUp } from './utils.js'; // Importa a nova função de animação
+import { getGiroTotal, animateCountUp } from './utils.js';
 import {
     createDashboardHTML, createLancamentosListHTML, createNovoLancamentoFormHTML,
     createLancamentosTableRowsHTML, createLancamentoDetailHTML, showAlertModal,
@@ -22,16 +20,66 @@ let currentPage = 1;
 const ITEMS_PER_PAGE = 15;
 let selectedMonthFilter = new Date().getMonth();
 let selectedYearFilter = new Date().getFullYear();
-let searchTerm = ''; // NOVO: Estado para o termo de busca
+let searchTerm = '';
 
 // --- Seletores do DOM ---
-// ... (seletores existentes)
+const loadingView = document.getElementById('loadingView');
+const loaderContainer = document.getElementById('loaderContainer');
+const loginContainer = document.getElementById('loginContainer');
+const loginButton = document.getElementById('loginButton');
+const logoutButton = document.getElementById('logoutButton');
+const appView = document.getElementById('appView');
+const allViews = document.querySelectorAll('.view');
+const navLinks = document.querySelectorAll('.nav-link');
+const userIdEl = document.getElementById('userId');
 
 // --- Lógica de Autenticação ---
-// ... (código existente, sem alterações aqui)
+onAuthStateChanged(auth, user => {
+    if (user) {
+        currentUser = user;
+        userIdEl.textContent = user.uid.substring(0, 8) + '...';
+        loadingView.style.display = 'none';
+        appView.style.display = 'block';
+        if (!lancamentosUnsubscribe) {
+            attachLancamentosListener();
+        }
+    } else {
+        currentUser = null;
+        appView.style.display = 'none';
+        loadingView.style.display = 'flex';
+        loaderContainer.classList.add('hidden');
+        loginContainer.classList.remove('hidden');
+        if (lancamentosUnsubscribe) {
+            lancamentosUnsubscribe();
+            lancamentosUnsubscribe = null;
+        }
+    }
+});
+
+loginButton.addEventListener('click', () => {
+    loaderContainer.classList.remove('hidden');
+    loginContainer.classList.add('hidden');
+    signInAnonymously(auth).catch(error => {
+        showAlertModal('Erro de Autenticação', error.message);
+        loaderContainer.classList.add('hidden');
+        loginContainer.classList.remove('hidden');
+    });
+});
+
+logoutButton.addEventListener('click', () => signOut(auth));
 
 // --- Lógica de Dados (Firestore) ---
-// ... (código existente, sem alterações aqui)
+function attachLancamentosListener() {
+    const q = query(collection(db, 'lancamentos'));
+    lancamentosUnsubscribe = onSnapshot(q, (querySnapshot) => {
+        allLancamentosData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
+        const currentViewEl = document.querySelector('.view[style*="block"]');
+        const viewId = currentViewEl ? currentViewEl.id : 'dashboardView';
+        showView(viewId);
+    }, (error) => {
+        showAlertModal("Erro de Conexão", "Não foi possível carregar os lançamentos.");
+    });
+}
 
 // --- Lógica de Navegação e Renderização ---
 async function showView(viewId, dataId = null) {
@@ -40,7 +88,18 @@ async function showView(viewId, dataId = null) {
     viewContainer.style.display = 'block';
 
     if (viewId === 'lancamentoDetailView' && dataId) {
-        // ... (código existente)
+        viewContainer.innerHTML = `<div class="flex items-center justify-center h-96"><div class="loader"></div></div>`;
+        lucide.createIcons();
+        
+        const docRef = doc(db, "lancamentos", dataId);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            renderView(viewId, { firestoreId: docSnap.id, ...docSnap.data() });
+        } else {
+            showAlertModal("Erro", "Lançamento não encontrado.");
+            showView('lancamentosListView');
+        }
     } else {
         renderView(viewId, allLancamentosData);
     }
@@ -50,7 +109,6 @@ async function showView(viewId, dataId = null) {
     } else if (viewId === 'dashboardView') {
         renderDashboardChart(allLancamentosData);
         
-        // NOVO: Dispara a animação dos cards do dashboard
         const giroEl = document.getElementById('giro-total-mes');
         const faturamentoEl = document.getElementById('faturamento-mes');
         const comissoesEl = document.getElementById('comissoes-mes');
@@ -60,28 +118,38 @@ async function showView(viewId, dataId = null) {
         if (comissoesEl) animateCountUp(comissoesEl, parseFloat(comissoesEl.dataset.value));
     }
     
-    // ... (código de navegação existente)
+    navLinks.forEach(link => {
+        const isActive = link.dataset.view === viewId;
+        link.classList.toggle('text-indigo-600', isActive);
+        link.classList.toggle('border-b-2', isActive);
+        link.classList.toggle('border-indigo-600', isActive);
+        link.classList.toggle('text-slate-500', !isActive);
+    });
 }
 
 function renderView(viewId, data) {
-    // ... (código existente, sem alterações aqui)
+    const viewContainer = document.getElementById(viewId);
+    let html = '';
+    switch (viewId) {
+        case 'dashboardView': html = createDashboardHTML(data); break;
+        case 'lancamentosListView': html = createLancamentosListHTML(); break;
+        case 'lancamentoDetailView': html = createLancamentoDetailHTML(data); break;
+    }
+    viewContainer.innerHTML = html;
+    lucide.createIcons();
 }
-
 
 // --- Lógica de Filtros e Paginação ---
 function getFilteredData() {
-    // Converte o termo de busca para minúsculas para busca case-insensitive
     const lowerCaseSearchTerm = searchTerm.toLowerCase();
 
     return allLancamentosData.filter(l => {
         const date = l.dataEmissao?.toDate();
         if (!date) return false;
 
-        // Filtros de data
         const monthMatch = selectedMonthFilter == -1 || date.getMonth() === selectedMonthFilter;
         const yearMatch = selectedYearFilter == -1 || date.getFullYear() === selectedYearFilter;
 
-        // NOVO: Filtro de busca
         const searchMatch = !lowerCaseSearchTerm || 
                               (l.cliente && l.cliente.toLowerCase().includes(lowerCaseSearchTerm)) ||
                               (l.numeroNf && l.numeroNf.toLowerCase().includes(lowerCaseSearchTerm)) ||
@@ -92,26 +160,250 @@ function getFilteredData() {
 }
 
 function applyFilters() {
-    // ... (código existente, sem alterações aqui)
+    const tableBody = document.getElementById('lancamentosTableBody');
+    if(!tableBody) return;
+
+    const filteredData = getFilteredData();
+    const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
+    currentPage = Math.min(currentPage, totalPages) || 1;
+
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    const paginatedData = filteredData.slice(start, end);
+
+    tableBody.innerHTML = createLancamentosTableRowsHTML(paginatedData);
+    renderPaginationControls(currentPage, filteredData.length, totalPages, (direction) => {
+        if (direction === 'prev' && currentPage > 1) currentPage--;
+        if (direction === 'next' && currentPage < totalPages) currentPage++;
+        applyFilters();
+    });
+    lucide.createIcons();
 }
 
 function populateFiltersAndApply() {
-    // ... (código existente)
+    const monthFilter = document.getElementById('monthFilter');
+    const yearFilter = document.getElementById('yearFilter');
+    if (!monthFilter || !yearFilter) return;
 
-    // NOVO: Adiciona o listener para o campo de busca
+    if (monthFilter.options.length <= 1) {
+        const months = ["Todos", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+        monthFilter.innerHTML = months.map((month, index) => `<option value="${index - 1}">${month}</option>`).join('');
+    }
+    
+    const years = [...new Set(allLancamentosData.map(l => l.dataEmissao?.toDate().getFullYear()).filter(Boolean))];
+    years.sort((a, b) => b - a);
+    if (!years.includes(new Date().getFullYear())) {
+        years.unshift(new Date().getFullYear());
+    }
+    yearFilter.innerHTML = `<option value="-1">Todos</option>` + years.map(year => `<option value="${year}">${year}</option>`).join('');
+    
+    monthFilter.value = selectedMonthFilter;
+    yearFilter.value = selectedYearFilter;
+
+    applyFilters();
+
+    monthFilter.onchange = () => { selectedMonthFilter = parseInt(monthFilter.value, 10); currentPage = 1; applyFilters(); };
+    yearFilter.onchange = () => { selectedYearFilter = parseInt(yearFilter.value, 10); currentPage = 1; applyFilters(); };
+
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
-        searchInput.value = searchTerm; // Mantém o valor da busca ao re-renderizar
+        searchInput.value = searchTerm;
         searchInput.addEventListener('input', (e) => {
             searchTerm = e.target.value;
-            currentPage = 1; // Reseta para a primeira página ao buscar
+            currentPage = 1;
             applyFilters();
         });
     }
 }
 
 // --- Lógica de Relatórios ---
-// ... (código existente, sem alterações aqui)
+function generateCsvReport() {
+    const filtered = getFilteredData();
+      if (filtered.length === 0) {
+        showAlertModal('Aviso', 'Não há dados para exportar com os filtros selecionados.');
+        return;
+    }
+
+    const head = ['Data Emissao', 'Cliente', 'NF', 'OS/PC', 'Motor', 'Valor Total', 'Comissao', 'Faturado', 'Data Faturamento'];
+    const body = filtered.map(l => [
+        l.dataEmissao?.toDate().toLocaleDateString('pt-BR'),
+        `"${(l.cliente || '').replace(/"/g, '""')}"`,
+        l.numeroNf || '-',
+        `"${(l.os || '').replace(/"/g, '""')}"`,
+        `"${(l.descricao || '').replace(/"/g, '""')}"`,
+        getGiroTotal(l).toFixed(2).replace('.',','),
+        (l.comissao || 0).toFixed(2).replace('.',','),
+        l.faturado ? 'Sim' : 'Nao',
+        l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : ''
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+        + head.join(';') + '\n' 
+        + body.map(e => e.join(';')).join('\n');
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "relatorio_lancamentos.csv");
+    document.body.appendChild(link); 
+    link.click();
+    document.body.removeChild(link);
+}
 
 // --- Event Listeners Globais ---
-// ... (código existente, sem alterações aqui)
+document.addEventListener('DOMContentLoaded', () => {
+    showView('dashboardView');
+});
+
+appView.addEventListener('click', async (e) => {
+    const { target } = e;
+    const navLink = target.closest('.nav-link');
+    if (navLink) {
+        e.preventDefault();
+        showView(navLink.dataset.view);
+        return;
+    }
+
+    if (target.closest('.view-details')) showView('lancamentoDetailView', target.closest('.view-details').dataset.id);
+    else if (target.closest('.back-to-list')) showView('lancamentosListView');
+    else if (target.id === 'toggleFormBtn') {
+        const formContainer = document.getElementById('formContainer');
+        if (formContainer.style.maxHeight) {
+            formContainer.style.maxHeight = null;
+            setTimeout(() => formContainer.innerHTML = '', 500);
+        } else {
+            formContainer.innerHTML = createNovoLancamentoFormHTML();
+            formContainer.style.maxHeight = formContainer.scrollHeight + "px";
+        }
+    } 
+    else if (target.id === 'cancelNewLancamento') {
+        const formContainer = document.getElementById('formContainer');
+        formContainer.style.maxHeight = null;
+        setTimeout(() => formContainer.innerHTML = '', 500);
+    } 
+    else if (target.id === 'analiseIaBtn') document.getElementById('nfUploadInput').click();
+    else if (target.closest('.faturado-toggle')) {
+        const button = target.closest('.faturado-toggle');
+        const lancamento = allLancamentosData.find(l => l.firestoreId === button.dataset.id);
+        if (lancamento) {
+            const newStatus = lancamento.faturado ? null : new Date();
+            await updateDoc(doc(db, 'lancamentos', button.dataset.id), { faturado: newStatus });
+        }
+    } 
+    else if (target.id === 'deleteLancamentoBtn') {
+        const form = target.closest('form');
+        if (form) {
+            showConfirmModal('Excluir Lançamento', 'Tem certeza?', async () => {
+                await deleteDoc(doc(db, "lancamentos", form.dataset.id));
+                showAlertModal('Excluído!', 'O lançamento foi removido.');
+                showView('lancamentosListView');
+            });
+        }
+    } 
+    else if (target.id === 'exportPdfBtn') showAlertModal('Info', 'Funcionalidade de relatório PDF a ser implementada.');
+    else if (target.id === 'exportCsvBtn') generateCsvReport();
+});
+
+appView.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+
+    try {
+        if (form.id === 'novoLancamentoForm') {
+            const dateValue = form.querySelector('#newDataEmissao').value;
+            const valorTotal = parseFloat(form.querySelector('#newValorTotal').value) || 0;
+            const taxaComissao = parseFloat(form.querySelector('#newTaxaComissao').value) || 0;
+            
+            await addDoc(collection(db, "lancamentos"), {
+                dataEmissao: new Date(dateValue + 'T12:00:00Z'),
+                cliente: form.querySelector('#newCliente').value,
+                numeroNf: form.querySelector('#newNumeroNf').value,
+                os: form.querySelector('#newOs').value,
+                descricao: form.querySelector('#newDescricao').value,
+                valorTotal,
+                taxaComissao,
+                comissao: valorTotal * (taxaComissao / 100),
+                faturado: null,
+                obs: form.querySelector('#newObs').value
+            });
+            const formContainer = document.getElementById('formContainer');
+            formContainer.style.maxHeight = null;
+            setTimeout(() => formContainer.innerHTML = '', 500);
+
+        } else if (form.id === 'editLancamentoForm') {
+            const dateValue = form.querySelector('#editDataEmissao').value;
+            const valorTotal = parseFloat(form.querySelector('#editValorTotal').value) || 0;
+            const taxaComissao = parseFloat(form.querySelector('#editTaxaComissao').value) || 0;
+
+            await updateDoc(doc(db, "lancamentos", form.dataset.id), {
+                dataEmissao: new Date(dateValue + 'T12:00:00Z'),
+                cliente: form.querySelector('#editCliente').value,
+                numeroNf: form.querySelector('#editNumeroNf').value,
+                os: form.querySelector('#editOs').value,
+                descricao: form.querySelector('#editDescricao').value,
+                valorTotal,
+                taxaComissao,
+                comissao: valorTotal * (taxaComissao / 100),
+                obs: form.querySelector('#editObs').value,
+                valorMaterial: deleteField(),
+                valorServico: deleteField()
+            });
+            showAlertModal('Sucesso', 'Alterações salvas.');
+            showView('lancamentoDetailView', form.dataset.id)
+        }
+    } catch (error) {
+        showAlertModal("Erro", `Não foi possível salvar. Erro: ${error.message}`);
+    } finally {
+        submitButton.disabled = false;
+    }
+});
+
+appView.addEventListener('change', async (e) => {
+    if (e.target.id === 'nfUploadInput') {
+        const files = e.target.files;
+        if (!files.length) return;
+        
+        showAlertModal('Processando...', `Analisando ${files.length} arquivo(s). Esta janela fechará ao concluir.`);
+        let successCount = 0;
+        let errorCount = 0;
+        
+        for (const file of files) {
+            try {
+                const imageData = await extractPdfImage(file);
+                const data = await callGeminiForAnalysis(imageData);
+                
+                let os_pc = data.os || '';
+                if (data.pc) { os_pc = os_pc ? `${os_pc} / ${data.pc}` : data.pc; }
+                const valorTotal = data.valorTotal || 0;
+                const taxaComissao = 0.5;
+
+                await addDoc(collection(db, "lancamentos"), {
+                    dataEmissao: new Date(data.dataEmissao + 'T12:00:00Z'),
+                    cliente: data.cliente,
+                    numeroNf: data.numeroNf,
+                    os: os_pc,
+                    descricao: data.observacoes,
+                    valorTotal,
+                    taxaComissao,
+                    comissao: valorTotal * (taxaComissao / 100),
+                    faturado: null,
+                    obs: `Analisado por IA a partir de ${file.name}`
+                });
+                successCount++;
+            } catch (error) {
+                console.error(`Erro ao processar ${file.name}:`, error);
+                errorCount++;
+            }
+        }
+        
+        closeModal('alertModal');
+        showAlertModal('Concluído', `${successCount} arquivo(s) processado(s) com sucesso. ${errorCount > 0 ? `${errorCount} falharam.` : ''}`);
+        e.target.value = '';
+    }
+});
+
+document.getElementById('alertModalCloseButton').addEventListener('click', () => closeModal('alertModal'));
+document.getElementById('confirmModalCancelButton').addEventListener('click', () => closeModal('confirmModal'));
+document.getElementById('confirmModalConfirmButton').addEventListener('click', handleConfirm);
