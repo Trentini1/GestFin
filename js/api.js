@@ -13,7 +13,7 @@ export async function extractPdfImage(file) {
 }
 
 export async function callGeminiForAnalysis(base64ImageData) {
-    const apiKey = "SUA_CHAVE_API_DO_GEMINI_AQUI"; // ATENÇÃO: Substitua pela sua chave segura
+    const apiKey = "AIzaSyDY9w9c17tQygvDlUwALFSc6YOPdiAJfNM"; // ATENÇÃO: Substitua pela sua chave segura
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
     
     const prompt = `
