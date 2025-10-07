@@ -98,7 +98,6 @@ export const createLancamentosListHTML = () => {
     </div>`;
 };
 
-// ESTA FUNÇÃO ESTAVA FALTANDO O EXPORT
 export const createNovoLancamentoFormHTML = () => `
     <form id="novoLancamentoForm" class="bg-white p-6 rounded-lg shadow space-y-4">
         <h3 class="text-lg font-medium">Novo Lançamento</h3>
