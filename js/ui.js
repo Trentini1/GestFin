@@ -2,7 +2,7 @@
 
 import { formatCurrency, getGiroTotal } from './utils.js';
 
-const DEFAULT_COMISSION_RATE = 0,5; // Em porcentagem (ex: 5 para 5%)
+const DEFAULT_COMISSION_RATE = 5; // Em porcentagem (ex: 5 para 5%)
 
 // --- Funções de criação de HTML ---
 
