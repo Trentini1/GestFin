@@ -118,6 +118,17 @@ export const createNovoLancamentoFormHTML = () => `
             <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Motor</label><input type="text" id="newDescricao" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
             <div><label class="block text-sm font-medium text-slate-700">Valor Total</label><input type="number" step="0.01" id="newValorTotal" value="0" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
         </div>
+        
+        <div class="pt-4 border-t">
+            <h4 class="text-md font-medium">Impostos sobre a Venda/Serviço</h4>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+                <div><label class="block text-sm font-medium text-slate-700">ISS (%)</label><input type="number" step="0.01" id="newImpostoIss" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">PIS (%)</label><input type="number" step="0.01" id="newImpostoPis" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">COFINS (%)</label><input type="number" step="0.01" id="newImpostoCofins" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">ICMS (%)</label><input type="number" step="0.01" id="newImpostoIcms" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+            </div>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Observação</label><textarea id="newObs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></textarea></div>
             <div><label class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label><input type="number" step="0.01" id="newTaxaComissao" value="${DEFAULT_COMISSION_RATE}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
@@ -149,7 +160,15 @@ export const createLancamentoDetailHTML = (data) => {
     
     const valorTotal = getGiroTotal(lancamento);
     const totalCustos = custosDaOs.reduce((sum, nota) => sum + nota.valorTotal, 0);
-    const lucroBruto = valorTotal - totalCustos;
+
+    const impostos = lancamento.impostos || {};
+    const valorIss = valorTotal * ((impostos.iss || 0) / 100);
+    const valorPis = valorTotal * ((impostos.pis || 0) / 100);
+    const valorCofins = valorTotal * ((impostos.cofins || 0) / 100);
+    const valorIcms = valorTotal * ((impostos.icms || 0) / 100);
+    const totalImpostos = valorIss + valorPis + valorCofins + valorIcms;
+
+    const resultadoFinal = valorTotal - totalCustos - totalImpostos;
 
     return `
     <button class="back-to-list flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
@@ -170,6 +189,16 @@ export const createLancamentoDetailHTML = (data) => {
             <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Observação</label><textarea id="editObs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">${lancamento.obs || ''}</textarea></div>
             <div><label class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label><input type="number" step="0.01" id="editTaxaComissao" value="${lancamento.taxaComissao || DEFAULT_COMISSION_RATE}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
         </div>
+        
+        <div class="pt-4 border-t">
+            <h4 class="text-md font-medium">Impostos sobre a Venda/Serviço</h4>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+                <div><label class="block text-sm font-medium text-slate-700">ISS (%)</label><input type="number" step="0.01" id="editImpostoIss" value="${impostos.iss || ''}" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">PIS (%)</label><input type="number" step="0.01" id="editImpostoPis" value="${impostos.pis || ''}" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">COFINS (%)</label><input type="number" step="0.01" id="editImpostoCofins" value="${impostos.cofins || ''}" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">ICMS (%)</label><input type="number" step="0.01" id="editImpostoIcms" value="${impostos.icms || ''}" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+            </div>
+        </div>
 
         <div class="flex justify-end pt-4 border-t">
             <button type="button" id="deleteLancamentoBtn" class="text-red-600 hover:underline mr-auto">Excluir Lançamento</button>
@@ -178,7 +207,7 @@ export const createLancamentoDetailHTML = (data) => {
     </form>
 
     <div class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto mt-8">
-        <h3 class="text-xl font-bold mb-4">Custos Vinculados a esta O.S.</h3>
+        <h3 class="text-xl font-bold mb-4">Análise Financeira da O.S.</h3>
         ${custosDaOs.length > 0 ? `
             <div class="space-y-4">
                 ${custosDaOs.map(nota => `
@@ -189,20 +218,22 @@ export const createLancamentoDetailHTML = (data) => {
                         </ul>
                     </div>
                 `).join('')}
+            </div>` : `<p class="text-slate-500">Nenhuma nota fiscal de compra foi vinculada a esta O.S. ainda.</p>`}
+        
+        <div class="mt-6 pt-4 border-t-2 space-y-2">
+            <div class="flex justify-between items-center text-lg">
+                <span class="font-medium text-slate-600">Total de Custos:</span>
+                <span class="font-bold text-red-600">${formatCurrency(totalCustos)}</span>
             </div>
-            <div class="mt-6 pt-4 border-t-2">
-                <div class="flex justify-between items-center text-lg">
-                    <span class="font-medium text-slate-600">Total de Custos:</span>
-                    <span class="font-bold text-red-600">${formatCurrency(totalCustos)}</span>
-                </div>
-                <div class="flex justify-between items-center text-lg mt-2">
-                    <span class="font-medium text-slate-600">Lucro Bruto (Valor Total - Custos):</span>
-                    <span class="font-bold text-green-700">${formatCurrency(lucroBruto)}</span>
-                </div>
+             <div class="flex justify-between items-center text-lg">
+                <span class="font-medium text-slate-600">Total de Impostos:</span>
+                <span class="font-bold text-orange-600">${formatCurrency(totalImpostos)}</span>
             </div>
-        ` : `
-            <p class="text-slate-500">Nenhuma nota fiscal de compra foi vinculada a esta O.S. ainda.</p>
-        `}
+            <div class="flex justify-between items-center text-xl mt-2">
+                <span class="font-bold text-slate-800">Resultado Final:</span>
+                <span class="font-extrabold text-green-700">${formatCurrency(resultadoFinal)}</span>
+            </div>
+        </div>
     </div>
     `;
 };
@@ -232,14 +263,12 @@ export const createClientesTableRowsHTML = (clientes) => {
             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"><button class="text-red-600 hover:text-red-900 delete-cliente-btn" data-id="${c.firestoreId}">Excluir</button></td>
         </tr>`).join('');
 };
-export const createNotasFiscaisViewHTML = (lancamentos) => {
-    // Criamos uma lista de O.S. únicas para o datalist do formulário
-    const osList = [...new Set(lancamentos.map(l => l.os).filter(Boolean))];
 
+export const createNotasFiscaisViewHTML = (lancamentos) => {
+    const osList = [...new Set(lancamentos.map(l => l.os).filter(Boolean))];
     return `
     <div class="space-y-6 max-w-6xl mx-auto">
         <h2 class="text-2xl font-bold">Gerenciar Notas Fiscais de Compra</h2>
-        
         <form id="addNotaCompraForm" class="bg-white p-6 rounded-lg shadow space-y-4">
             <h3 class="text-lg font-medium">Adicionar Nova NF de Compra</h3>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -265,9 +294,19 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
             </div>
             
             <div class="pt-4 border-t">
+                <h4 class="text-md font-medium">Impostos sobre a Compra (Crédito/Custo)</h4>
+                <p class="text-xs text-slate-500 mb-2">Preencha os valores em Reais (R$) informados na nota.</p>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div><label class="block text-sm font-medium text-slate-700">ICMS (R$)</label><input type="number" step="0.01" id="newCompraImpostoIcms" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">IPI (R$)</label><input type="number" step="0.01" id="newCompraImpostoIpi" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">PIS (R$)</label><input type="number" step="0.01" id="newCompraImpostoPis" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">COFINS (R$)</label><input type="number" step="0.01" id="newCompraImpostoCofins" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                </div>
+            </div>
+            
+            <div class="pt-4 border-t">
                 <h4 class="text-md font-medium mb-2">Itens da Nota</h4>
-                <div id="itens-container" class="space-y-2">
-                    </div>
+                <div id="itens-container" class="space-y-2"></div>
                 <button type="button" id="addItemBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
                     <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Item
                 </button>
@@ -307,13 +346,13 @@ export const createNotasCompraTableRowsHTML = (notas, lancamentos) => {
         <tr class="hover:bg-slate-50">
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${n.dataEmissao.toDate().toLocaleDateString('pt-BR')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${n.numeroNf}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
                 ${lancamentoId ? `
                     <button class="link-to-os text-indigo-600 hover:underline font-medium" data-lancamento-id="${lancamentoId}">
                         ${n.osId}
                     </button>
                 ` : `
-                    <span title="Não foi possível encontrar um lançamento com este número de O.S.">${n.osId}</span> 
+                    <span class="text-slate-500" title="Não foi possível encontrar um lançamento com este número de O.S.">${n.osId}</span> 
                 `}
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(n.valorTotal)}</td>
@@ -324,9 +363,9 @@ export const createNotasCompraTableRowsHTML = (notas, lancamentos) => {
     }).join('');
 };
 
-// --- Funções de Modal (Adicionadas/Corrigidas) ---
-let confirmCallback = null;
 
+// --- Funções de Modal
+let confirmCallback = null;
 export const showAlertModal = (title, message) => {
     const modal = document.getElementById('alertModal');
     if(!modal) return;
@@ -334,7 +373,6 @@ export const showAlertModal = (title, message) => {
     modal.querySelector('#alertModalMessage').textContent = message;
     modal.style.display = 'flex';
 };
-
 export const showConfirmModal = (title, message, onConfirm) => {
     const modal = document.getElementById('confirmModal');
     if(!modal) return;
@@ -343,20 +381,18 @@ export const showConfirmModal = (title, message, onConfirm) => {
     confirmCallback = onConfirm;
     modal.style.display = 'flex';
 };
-
 export const handleConfirm = () => {
     if (confirmCallback) confirmCallback();
     closeModal('confirmModal');
     confirmCallback = null; 
 };
-
 export const closeModal = (modalId) => {
     const modal = document.getElementById(modalId);
     if(modal) modal.style.display = 'none';
 };
 
 
-// --- Funções de Renderização de Componentes ---
+// --- Funções de Renderização de Componentes
 export function renderPaginationControls(currentPage, totalItems, totalPages, onPageChange) {
     const container = document.getElementById('pagination-controls');
     if (!container) return;
@@ -388,7 +424,7 @@ export function renderDashboardChart(lancamentos) {
             return faturadoDate && faturadoDate.getMonth() === date.getMonth() && faturadoDate.getFullYear() === year;
         });
         faturamentoData.push(faturadosNoMes.reduce((sum, l) => sum + getGiroTotal(l), 0));
-        comissaoData.push(faturadosNoMes.reduce((sum, l) => sum + (l.comissao || 0), 0));
+        comissaoData.push(faturadosNoMes.reduce((sum, l) => sum + l.comissao, 0));
     }
     if (dashboardChart) dashboardChart.destroy();
     dashboardChart = new Chart(chartCtx, { type: 'bar', data: { labels, datasets: [{ label: 'Faturamento', data: faturamentoData, backgroundColor: 'rgba(79, 70, 229, 0.8)' }, { label: 'Comissão', data: comissaoData, backgroundColor: 'rgba(251, 191, 36, 0.8)' }] }, options: { scales: { y: { beginAtZero: true, ticks: { callback: value => 'R$ ' + value.toLocaleString('pt-BR') } } }, responsive: true, maintainAspectRatio: false } });
