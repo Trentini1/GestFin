@@ -196,6 +196,84 @@ export const createClientesTableRowsHTML = (clientes) => {
             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"><button class="text-red-600 hover:text-red-900 delete-cliente-btn" data-id="${c.firestoreId}">Excluir</button></td>
         </tr>`).join('');
 };
+export const createNotasFiscaisViewHTML = (lancamentos) => {
+    // Criamos uma lista de O.S. únicas para o datalist do formulário
+    const osList = [...new Set(lancamentos.map(l => l.os).filter(Boolean))];
+
+    return `
+    <div class="space-y-6 max-w-6xl mx-auto">
+        <h2 class="text-2xl font-bold">Gerenciar Notas Fiscais de Compra</h2>
+        
+        <form id="addNotaCompraForm" class="bg-white p-6 rounded-lg shadow space-y-4">
+            <h3 class="text-lg font-medium">Adicionar Nova NF de Compra</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">O.S. Vinculada</label>
+                    <input type="text" id="newNotaOsId" required list="os-list" placeholder="Nº da O.S." class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                    <datalist id="os-list">
+                        ${osList.map(os => `<option value="${os}"></option>`).join('')}
+                    </datalist>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Nº da NF</label>
+                    <input type="text" id="newNotaNumeroNf" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Data Emissão</label>
+                    <input type="date" id="newNotaData" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                </div>
+                 <div>
+                    <label class="block text-sm font-medium text-slate-700">Chave de Acesso (44 dígitos)</label>
+                    <input type="text" id="newNotaChaveAcesso" placeholder="Opcional" maxlength="44" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                </div>
+            </div>
+            
+            <div class="pt-4 border-t">
+                <h4 class="text-md font-medium mb-2">Itens da Nota</h4>
+                <div id="itens-container" class="space-y-2">
+                    </div>
+                <button type="button" id="addItemBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
+                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Item
+                </button>
+            </div>
+
+            <div class="flex justify-end pt-4 border-t">
+                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Nota Fiscal</button>
+            </div>
+        </form>
+
+        <div class="bg-white p-6 rounded-lg shadow">
+            <h3 class="text-lg font-medium mb-4">Histórico de Notas de Compra</h3>
+            <table class="min-w-full divide-y divide-slate-200">
+                <thead class="bg-slate-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nº NF</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">O.S. Vinculada</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor Total</th>
+                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
+                    </tr>
+                </thead>
+                <tbody id="notasCompraTableBody"></tbody>
+            </table>
+        </div>
+    </div>`;
+};
+
+export const createNotasCompraTableRowsHTML = (notas) => {
+    if (!notas.length) return '<tr><td colspan="5" class="text-center py-10 text-slate-500">Nenhuma nota fiscal de compra encontrada.</td></tr>';
+    
+    return notas.sort((a,b) => b.dataEmissao.toDate() - a.dataEmissao.toDate()).map(n => `
+        <tr class="hover:bg-slate-50">
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${n.dataEmissao.toDate().toLocaleDateString('pt-BR')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${n.numeroNf}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${n.osId}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(n.valorTotal)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <button class="text-red-600 hover:text-red-900 delete-notacompra-btn" data-id="${n.firestoreId}">Excluir</button>
+            </td>
+        </tr>`).join('');
+};
 
 // --- Funções de Modal (Adicionadas/Corrigidas) ---
 let confirmCallback = null;
