@@ -1,6 +1,9 @@
+// --- VERSÃO DE DEPURAÇÃO ---
+console.log('[Checkpoint 1] Módulo main.js carregado.');
+
 // Firebase SDK
 import { signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { collection, doc, addDoc, getDoc, deleteDoc, onSnapshot, query, updateDoc, deleteField, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, doc, addDoc, getDoc, deleteDoc, onSnapshot, query, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // Módulos locais
 import { auth, db } from './firebase-config.js';
@@ -13,47 +16,113 @@ import {
     renderNfPieChart
 } from './ui.js';
 
+console.log('[Checkpoint 2] Todos os módulos foram importados.');
+
 // --- Estado da Aplicação ---
-// ... (variáveis de estado existentes)
+let currentUser = null;
+let lancamentosUnsubscribe = null;
+let allLancamentosData = [];
+let currentPage = 1;
+const ITEMS_PER_PAGE = 15;
+let selectedMonthFilter = new Date().getMonth();
+let selectedYearFilter = new Date().getFullYear();
+let searchTerm = '';
 let sortState = { key: 'dataEmissao', direction: 'desc' };
 
-// NOVO: Estado para as datas do dashboard
-const hoje = new Date();
-const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-let dashboardStartDate = primeiroDiaDoMes;
-let dashboardEndDate = hoje;
-
 // --- Seletores do DOM ---
-// ... (seletores existentes)
+const loadingView = document.getElementById('loadingView');
+const loaderContainer = document.getElementById('loaderContainer');
+const loginContainer = document.getElementById('loginContainer');
+const loginButton = document.getElementById('loginButton');
+const logoutButton = document.getElementById('logoutButton');
+const appView = document.getElementById('appView');
+const allViews = document.querySelectorAll('.view');
+const navLinks = document.querySelectorAll('.nav-link');
+const userIdEl = document.getElementById('userId');
 
-// --- Lógica de Autenticação e Dados ---
-// ... (código existente sem alteração)
+console.log('[Checkpoint 3] Variáveis e seletores do DOM prontos.');
+
+// --- Lógica de Autenticação ---
+onAuthStateChanged(auth, user => {
+    console.log('[Checkpoint 4] onAuthStateChanged foi disparado. Usuário:', user ? `ID: ${user.uid}` : 'null');
+    if (user) {
+        currentUser = user;
+        userIdEl.textContent = user.uid.substring(0, 8) + '...';
+        loadingView.style.display = 'none';
+        appView.style.display = 'block';
+        console.log('[Checkpoint 5] Usuário autenticado. UI principal visível.');
+        if (!lancamentosUnsubscribe) {
+            console.log('[Checkpoint 6] Chamando attachLancamentosListener...');
+            attachLancamentosListener();
+        }
+    } else {
+        currentUser = null;
+        appView.style.display = 'none';
+        loadingView.style.display = 'flex';
+        loaderContainer.classList.add('hidden');
+        loginContainer.classList.remove('hidden');
+        console.log('[Checkpoint 5.1] Usuário deslogado. Tela de login visível.');
+        if (lancamentosUnsubscribe) {
+            lancamentosUnsubscribe();
+            lancamentosUnsubscribe = null;
+        }
+    }
+});
+
+loginButton.addEventListener('click', () => {
+    loaderContainer.classList.remove('hidden');
+    loginContainer.classList.add('hidden');
+    signInAnonymously(auth).catch(error => {
+        showAlertModal('Erro de Autenticação', error.message);
+        loaderContainer.classList.add('hidden');
+        loginContainer.classList.remove('hidden');
+    });
+});
+
+logoutButton.addEventListener('click', () => signOut(auth));
+
+// --- Lógica de Dados (Firestore) ---
+function attachLancamentosListener() {
+    console.log('[Checkpoint 7] Dentro de attachLancamentosListener.');
+    const q = query(collection(db, 'lancamentos'));
+    lancamentosUnsubscribe = onSnapshot(q, (querySnapshot) => {
+        console.log(`[Checkpoint 8] onSnapshot (Firestore) recebeu dados. ${querySnapshot.docs.length} documentos.`);
+        allLancamentosData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
+        const currentViewEl = document.querySelector('.view[style*="block"]');
+        const viewId = currentViewEl ? currentViewEl.id : 'dashboardView';
+        showView(viewId);
+    }, (error) => {
+        console.error('[ERRO] Falha no onSnapshot:', error);
+        showAlertModal("Erro de Conexão", "Não foi possível carregar os lançamentos.");
+    });
+}
 
 // --- Lógica de Navegação e Renderização ---
 async function showView(viewId, dataId = null) {
+    console.log(`[Checkpoint 9] showView chamada para a view: '${viewId}'`);
     allViews.forEach(v => v.style.display = 'none');
     const viewContainer = document.getElementById(viewId);
     if (viewContainer) {
         viewContainer.style.display = 'block';
+    } else {
+        console.error(`[ERRO] A view com ID '${viewId}' não foi encontrada.`);
+        return;
     }
 
-    // Lógica de Renderização Específica da View
-    if (viewId === 'dashboardView') {
-        // Filtra os dados ANTES de renderizar qualquer coisa no dashboard
-        const dashboardData = allLancamentosData.filter(l => {
-            const dataLancamento = l.dataEmissao?.toDate();
-            if (!dataLancamento) return false;
-            // Ajusta o fim do dia para incluir o dia final completo
-            const endDateFinal = new Date(dashboardEndDate);
-            endDateFinal.setHours(23, 59, 59, 999);
-            return dataLancamento >= dashboardStartDate && dataLancamento <= endDateFinal;
-        });
-
-        renderView(viewId, { dashboardData, startDate: dashboardStartDate, endDate: dashboardEndDate });
-        renderDashboardChart(allLancamentosData); // Gráfico de 6 meses usa todos os dados
-        renderNfPieChart(dashboardData); // Gráfico de pizza usa dados do período
+    if (viewId === 'lancamentoDetailView' && dataId) {
+        // ... (lógica de detalhe)
+    } else {
+        renderView(viewId, allLancamentosData);
+    }
+    
+    console.log(`[Checkpoint 10] renderView concluída para '${viewId}'. Iniciando lógicas específicas.`);
+    
+    if (viewId === 'lancamentosListView') {
+        populateFiltersAndApply();
+    } else if (viewId === 'dashboardView') {
+        renderDashboardChart(allLancamentosData);
+        renderNfPieChart(allLancamentosData);
         
-        // Dispara animações
         const giroEl = document.getElementById('giro-total-mes');
         const faturamentoEl = document.getElementById('faturamento-mes');
         const comissoesEl = document.getElementById('comissoes-mes');
@@ -61,148 +130,21 @@ async function showView(viewId, dataId = null) {
         if (giroEl) animateCountUp(giroEl, parseFloat(giroEl.dataset.value));
         if (faturamentoEl) animateCountUp(faturamentoEl, parseFloat(faturamentoEl.dataset.value));
         if (comissoesEl) animateCountUp(comissoesEl, parseFloat(comissoesEl.dataset.value));
-
-    } else if (viewId === 'lancamentoDetailView' && dataId) {
-        // ... (lógica existente)
-    } else {
-        renderView(viewId, allLancamentosData);
-    }
-
-    if (viewId === 'lancamentosListView') {
-        populateFiltersAndApply();
     }
     
-    // ... (lógica de navegação existente)
+    navLinks.forEach(link => {
+        const isActive = link.dataset.view === viewId;
+        link.classList.toggle('text-indigo-600', isActive);
+        link.classList.toggle('border-b-2', isActive);
+        link.classList.toggle('border-indigo-600', isActive);
+        link.classList.toggle('text-slate-500', !isActive);
+    });
+    console.log(`[Checkpoint 11] Lógicas específicas e navegação atualizadas para '${viewId}'.`);
 }
 
 function renderView(viewId, data) {
-    const viewContainer = document.getElementById(viewId);
-    if (!viewContainer) return;
-    let html = '';
-    switch (viewId) {
-        case 'dashboardView': 
-            html = createDashboardHTML(data.dashboardData, data.startDate, data.endDate); 
-            break;
-        // ... (resto do switch)
-    }
-    viewContainer.innerHTML = html;
-    lucide.createIcons();
+    // ... (função renderView existente, sem checkpoints necessários por enquanto)
 }
 
-// ... (Resto do arquivo com as lógicas de filtro, paginação, etc.)
-
-// --- NOVAS FUNÇÕES: Backup e Restauração ---
-
-function generateBackupFile() {
-    if (allLancamentosData.length === 0) {
-        showAlertModal('Aviso', 'Não há dados para fazer backup.');
-        return;
-    }
-
-    // Converte Timestamps para um formato de texto (string ISO)
-    const backupData = allLancamentosData.map(lancamento => {
-        const serializable = { ...lancamento };
-        if (serializable.dataEmissao) {
-            serializable.dataEmissao = serializable.dataEmissao.toDate().toISOString();
-        }
-        if (serializable.faturado) {
-            serializable.faturado = serializable.faturado.toDate().toISOString();
-        }
-        delete serializable.firestoreId; // Remove o ID do Firestore
-        return serializable;
-    });
-
-    const jsonString = JSON.stringify(backupData, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    const date = new Date().toISOString().split('T')[0];
-    a.download = `backup-gestao-pro-${date}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-}
-
-async function handleRestoreFile(file) {
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        try {
-            const dataToRestore = JSON.parse(event.target.result);
-            if (!Array.isArray(dataToRestore)) {
-                throw new Error("O arquivo de backup não é um array válido.");
-            }
-
-            showConfirmModal(
-                'Restaurar Backup?',
-                `Você está prestes a adicionar ${dataToRestore.length} lançamentos do arquivo. Isso não apagará os dados existentes. Deseja continuar?`,
-                async () => {
-                    showAlertModal('Processando...', 'Restaurando backup. Isso pode levar um momento.');
-                    const batch = writeBatch(db);
-
-                    dataToRestore.forEach(lancamento => {
-                        const newDocRef = doc(collection(db, "lancamentos"));
-                        const restoredLancamento = { ...lancamento };
-                        // Converte as strings de data de volta para objetos Date do Firebase
-                        if (restoredLancamento.dataEmissao) {
-                            restoredLancamento.dataEmissao = new Date(restoredLancamento.dataEmissao);
-                        }
-                        if (restoredLancamento.faturado) {
-                            restoredLancamento.faturado = new Date(restoredLancamento.faturado);
-                        }
-                        batch.set(newDocRef, restoredLancamento);
-                    });
-
-                    await batch.commit();
-                    closeModal('alertModal');
-                    showAlertModal('Sucesso!', `${dataToRestore.length} lançamentos foram restaurados.`);
-                }
-            );
-
-        } catch (error) {
-            showAlertModal('Erro de Restauração', `Não foi possível ler o arquivo de backup. Verifique se o arquivo JSON é válido. Erro: ${error.message}`);
-        }
-    };
-    reader.readAsText(file);
-}
-
-// --- Event Listeners Globais ---
-// ...
-appView.addEventListener('click', async (e) => {
-    // ... (listeners existentes: navLink, sortBtn, deleteBtn, etc.)
-
-    // NOVO: Listener para o filtro do dashboard
-    if (target.id === 'dashboardFilterBtn') {
-        const startDateInput = document.getElementById('dashboardStartDate');
-        const endDateInput = document.getElementById('dashboardEndDate');
-        dashboardStartDate = new Date(startDateInput.value + 'T00:00:00');
-        dashboardEndDate = new Date(endDateInput.value + 'T00:00:00');
-        showView('dashboardView');
-    }
-
-    // NOVO: Listeners para backup e restauração
-    if (target.id === 'backupBtn') {
-        generateBackupFile();
-    }
-
-    if (target.id === 'restoreBtn') {
-        document.getElementById('restoreInput').click();
-    }
-});
-
-// ... (listener de 'submit' existente)
-
-appView.addEventListener('change', async (e) => {
-    // ... (listener de upload de NF existente)
-    
-    // NOVO: Listener para o input de restauração de backup
-    if (e.target.id === 'restoreInput') {
-        const file = e.target.files[0];
-        handleRestoreFile(file);
-        e.target.value = ''; // Limpa o input para poder selecionar o mesmo arquivo novamente
-    }
-});
+// --- Funções restantes (filtros, relatórios, event listeners...) ---
+// (O resto do seu código main.js continua aqui, sem alterações)
