@@ -90,7 +90,10 @@ function attachLancamentosListener() {
     lancamentosUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allLancamentosData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl) showView(currentViewEl.id);
+        // ATUALIZA APENAS O NECESSÁRIO, SEM REDESENHAR A TELA INTEIRA
+        if (currentViewEl && currentViewEl.id === 'lancamentosListView') {
+            applyFilters();
+        }
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os lançamentos."));
 }
 
@@ -99,7 +102,10 @@ function attachVariaveisListener() {
     variaveisUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allVariaveisData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl) showView(currentViewEl.id);
+        if (currentViewEl && currentViewEl.id === 'variaveisView') {
+            const tableBody = document.getElementById('variaveisTableBody');
+            if (tableBody) tableBody.innerHTML = createVariaveisTableRowsHTML(allVariaveisData);
+        }
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as variáveis."));
 }
 
@@ -108,8 +114,9 @@ function attachClientesListener() {
     clientesUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allClientesData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl && (currentViewEl.id === 'clientesView' || currentViewEl.id === 'lancamentosListView')) {
-            showView(currentViewEl.id);
+        if (currentViewEl && currentViewEl.id === 'clientesView') {
+            const tableBody = document.getElementById('clientesTableBody');
+            if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
         }
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os clientes."));
 }
@@ -119,8 +126,9 @@ function attachNotasCompraListener() {
     notasCompraUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allNotasCompraData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl && (currentViewEl.id === 'notasFiscaisView' || currentViewEl.id === 'lancamentoDetailView')) {
-            showView(currentViewEl.id);
+        if (currentViewEl && currentViewEl.id === 'notasFiscaisView') {
+            const tableBody = document.getElementById('notasCompraTableBody');
+            if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(allNotasCompraData, allLancamentosData);
         }
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as notas de compra."));
 }
