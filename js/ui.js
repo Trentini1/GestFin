@@ -1,6 +1,6 @@
 import { formatCurrency, getGiroTotal } from './utils.js';
 
-const DEFAULT_COMISSION_RATE = 0.5; // Corrigido para 0,5%
+const DEFAULT_COMISSION_RATE = 0.5;
 
 // --- Funções de criação de HTML ---
 
@@ -28,10 +28,18 @@ export const createDashboardHTML = (lancamentos) => {
             <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="bg-green-100 p-3 rounded-full"><i data-lucide="dollar-sign" class="w-6 h-6 text-green-600"></i></div><div class="ml-4"><p class="text-sm text-slate-500">Faturamento do Mês</p><p id="faturamento-mes" data-value="${faturamentoMes}" class="text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
             <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="bg-yellow-100 p-3 rounded-full"><i data-lucide="percent" class="w-6 h-6 text-yellow-600"></i></div><div class="ml-4"><p class="text-sm text-slate-500">Comissões do Mês</p><p id="comissoes-mes" data-value="${comissoesMes}" class="text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
         </div>
-        <div class="mt-8 bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Desempenho dos Últimos 6 Meses</h3>
-            <div class="relative h-96">
-                <canvas id="dashboardChart"></canvas>
+        <div class="mt-8 grid grid-cols-1 lg:grid-cols-5 gap-8">
+            <div class="lg:col-span-3 bg-white p-6 rounded-lg shadow">
+                <h3 class="text-lg font-medium mb-4">Desempenho dos Últimos 6 Meses</h3>
+                <div class="relative h-96">
+                    <canvas id="dashboardChart"></canvas>
+                </div>
+            </div>
+            <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow">
+                <h3 class="text-lg font-medium mb-4">Lançamentos (Últimos 30 dias)</h3>
+                <div class="relative h-96 flex items-center justify-center">
+                    <canvas id="nfPieChart"></canvas>
+                </div>
             </div>
         </div>`;
 };
@@ -55,6 +63,7 @@ export const createLancamentosListHTML = () => {
         </div>
         <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
             <h2 class="text-2xl font-bold">Histórico de Lançamentos</h2>
+            <div id="sort-reset-container" class="hidden items-center"></div>
             <div class="flex items-center gap-4">
                 <div class="flex items-center gap-2">
                     <label for="monthFilter" class="text-sm font-medium">Mês:</label>
@@ -70,8 +79,12 @@ export const createLancamentosListHTML = () => {
             <table class="min-w-full divide-y divide-slate-200">
                 <thead class="bg-slate-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Data Emissão</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Cliente</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                            <button class="flex items-center gap-2 sort-btn" data-key="dataEmissao">Data Emissão <i data-lucide="arrow-down-up" class="h-4 w-4"></i></button>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                            <button class="flex items-center gap-2 sort-btn" data-key="cliente">Cliente <i data-lucide="arrow-down-up" class="h-4 w-4"></i></button>
+                        </th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">NF</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">O.S/PC</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Giro Total</th>
@@ -130,7 +143,7 @@ export const createLancamentosTableRowsHTML = (lancamentos) => {
         <tr class="hover:bg-slate-50">
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l.dataEmissao?.toDate().toLocaleDateString('pt-BR')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${l.cliente}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l.numeroNf}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l.numeroNf || 'NT'}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l.os || ''}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(giroTotal)}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(l.comissao)}</td>
@@ -173,7 +186,6 @@ export const createLancamentoDetailHTML = (lancamento) => {
         </div>
     </form>`;
 };
-
 
 // --- Funções de Renderização e Modais ---
 
@@ -302,6 +314,51 @@ export function renderDashboardChart(lancamentos) {
             },
             responsive: true,
             maintainAspectRatio: false
+        }
+    });
+}
+
+let nfPieChart = null;
+export function renderNfPieChart(lancamentos) {
+    const ctx = document.getElementById('nfPieChart')?.getContext('2d');
+    if (!ctx) return;
+
+    const umMesAtras = new Date();
+    umMesAtras.setDate(umMesAtras.getDate() - 30);
+
+    const lancamentosRecentes = lancamentos.filter(l => l.dataEmissao?.toDate() > umMesAtras);
+
+    const comNf = lancamentosRecentes.filter(l => l.numeroNf && l.numeroNf.toUpperCase() !== 'NT').length;
+    const semNf = lancamentosRecentes.length - comNf;
+
+    const data = {
+        labels: ['Com NF', 'Sem NF (NT)'],
+        datasets: [{
+            data: [comNf, semNf],
+            backgroundColor: ['rgba(79, 70, 229, 0.8)', 'rgba(203, 213, 225, 0.8)'],
+            borderColor: ['#FFFFFF'],
+            borderWidth: 2
+        }]
+    };
+
+    if (nfPieChart) {
+        nfPieChart.destroy();
+    }
+
+    nfPieChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: data,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                title: {
+                    display: false,
+                }
+            }
         }
     });
 }
