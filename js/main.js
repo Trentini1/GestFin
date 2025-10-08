@@ -10,12 +10,8 @@ import {
     createDashboardHTML, createLancamentosListHTML, createNovoLancamentoFormHTML,
     createLancamentosTableRowsHTML, createLancamentoDetailHTML, showAlertModal,
     showConfirmModal, closeModal, handleConfirm, renderPaginationControls, renderDashboardChart,
-    renderNfPieChart, createVariaveisViewHTML, createVariaveisTableRowsHTML
-    import {
-    // ...
-    createVariaveisViewHTML, createVariaveisTableRowsHTML,
-    createClientesViewHTML, createClientesTableRowsHTML 
-    
+    renderNfPieChart, createVariaveisViewHTML, createVariaveisTableRowsHTML,
+    createClientesViewHTML, createClientesTableRowsHTML
 } from './ui.js';
 
 // --- Estado da Aplicação ---
@@ -24,15 +20,14 @@ let lancamentosUnsubscribe = null;
 let allLancamentosData = [];
 let variaveisUnsubscribe = null;
 let allVariaveisData = [];
+let clientesUnsubscribe = null;
+let allClientesData = [];
 let currentPage = 1;
 const ITEMS_PER_PAGE = 15;
 let selectedMonthFilter = new Date().getMonth();
 let selectedYearFilter = new Date().getFullYear();
 let searchTerm = '';
 let sortState = { key: 'dataEmissao', direction: 'desc' };
-let clientesUnsubscribe = null; 
-let allClientesData = []; 
-
 const hoje = new Date();
 const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
 let dashboardStartDate = primeiroDiaDoMes;
@@ -58,7 +53,7 @@ onAuthStateChanged(auth, user => {
         appView.style.display = 'block';
         if (!lancamentosUnsubscribe) attachLancamentosListener();
         if (!variaveisUnsubscribe) attachVariaveisListener();
-        if (!clientesUnsubscribe) attachClientesListener(); // NOVO
+        if (!clientesUnsubscribe) attachClientesListener();
     } else {
         currentUser = null;
         appView.style.display = 'none';
@@ -84,8 +79,6 @@ loginButton.addEventListener('click', () => {
 logoutButton.addEventListener('click', () => signOut(auth));
 
 // --- Lógica de Dados (Firestore) ---
-function attachLancamentosListener() { /* ... */ }
-function attachVariaveisListener() { /* ... */ }
 function attachLancamentosListener() {
     const q = query(collection(db, 'lancamentos'));
     lancamentosUnsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -102,18 +95,19 @@ function attachVariaveisListener() {
         const currentViewEl = document.querySelector('.view[style*="block"]');
         if (currentViewEl) showView(currentViewEl.id);
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as variáveis."));
-    function attachClientesListener() {
+}
+
+function attachClientesListener() {
     const q = query(collection(db, 'clientes'));
     clientesUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allClientesData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl && currentViewEl.id === 'clientesView') {
-            showView('clientesView');
+        if (currentViewEl && (currentViewEl.id === 'clientesView' || currentViewEl.id === 'lancamentosListView')) {
+            showView(currentViewEl.id);
         }
-    });
-        
-
+    }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os clientes."));
 }
+
 
 // --- Lógica de Navegação e Renderização ---
 async function showView(viewId, dataId = null) {
@@ -124,33 +118,27 @@ async function showView(viewId, dataId = null) {
     if (viewId === 'dashboardView') {
         const endDateFinal = new Date(dashboardEndDate);
         endDateFinal.setHours(23, 59, 59, 999);
-        
         const dashboardLancamentos = allLancamentosData.filter(l => {
             const dataLancamento = l.dataEmissao?.toDate();
             return dataLancamento && dataLancamento >= dashboardStartDate && dataLancamento <= endDateFinal;
         });
-
         const dashboardVariaveis = allVariaveisData.filter(v => {
             const dataVariavel = v.data?.toDate();
             return dataVariavel && dataVariavel >= dashboardStartDate && dataVariavel <= endDateFinal;
         });
         const totalVariaveis = dashboardVariaveis.reduce((sum, v) => sum + v.valor, 0);
-
         renderView(viewId, { dashboardLancamentos, totalVariaveis, startDate: dashboardStartDate, endDate: dashboardEndDate });
         renderDashboardChart(allLancamentosData);
         renderNfPieChart(dashboardLancamentos);
-        
-        document.querySelectorAll('.dashboard-value').forEach(el => {
-            animateCountUp(el, parseFloat(el.dataset.value));
-        });
-
+        document.querySelectorAll('.dashboard-value').forEach(el => animateCountUp(el, parseFloat(el.dataset.value)));
     } else if (viewId === 'variaveisView') {
         renderView(viewId);
         const tableBody = document.getElementById('variaveisTableBody');
-        if (tableBody) {
-            tableBody.innerHTML = createVariaveisTableRowsHTML(allVariaveisData);
-        }
-
+        if (tableBody) tableBody.innerHTML = createVariaveisTableRowsHTML(allVariaveisData);
+    } else if (viewId === 'clientesView') {
+        renderView(viewId);
+        const tableBody = document.getElementById('clientesTableBody');
+        if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
     } else if (viewId === 'lancamentoDetailView' && dataId) {
         viewContainer.innerHTML = `<div class="flex items-center justify-center h-96"><div class="loader"></div></div>`;
         lucide.createIcons();
@@ -182,12 +170,9 @@ function renderView(viewId, data) {
     if (!viewContainer) return;
     let html = '';
     switch (viewId) {
-        case 'dashboardView': 
-            html = createDashboardHTML(data.dashboardLancamentos, data.totalVariaveis, data.startDate, data.endDate); 
-            break;
-        case 'variaveisView':
-            html = createVariaveisViewHTML();
-            break;
+        case 'dashboardView': html = createDashboardHTML(data.dashboardLancamentos, data.totalVariaveis, data.startDate, data.endDate); break;
+        case 'variaveisView': html = createVariaveisViewHTML(); break;
+        case 'clientesView': html = createClientesViewHTML(); break;
         case 'lancamentosListView': html = createLancamentosListHTML(); break;
         case 'lancamentoDetailView': html = createLancamentoDetailHTML(data); break;
     }
@@ -195,19 +180,15 @@ function renderView(viewId, data) {
     lucide.createIcons();
 }
 
-// --- Lógica de Filtros e Paginação ---
+// --- Lógica de Filtros, Ordenação e Paginação ---
 function getFilteredData() {
     const lowerCaseSearchTerm = searchTerm.toLowerCase();
-
     const filtered = allLancamentosData.filter(l => {
         const date = l.dataEmissao?.toDate();
         if (!date) return false;
         const monthMatch = selectedMonthFilter == -1 || date.getMonth() === selectedMonthFilter;
         const yearMatch = selectedYearFilter == -1 || date.getFullYear() === selectedYearFilter;
-        const searchMatch = !lowerCaseSearchTerm || 
-                              (l.cliente && l.cliente.toLowerCase().includes(lowerCaseSearchTerm)) ||
-                              (l.numeroNf && l.numeroNf.toLowerCase().includes(lowerCaseSearchTerm)) ||
-                              (l.os && l.os.toLowerCase().includes(lowerCaseSearchTerm));
+        const searchMatch = !lowerCaseSearchTerm || (l.cliente && l.cliente.toLowerCase().includes(lowerCaseSearchTerm)) || (l.numeroNf && l.numeroNf.toLowerCase().includes(lowerCaseSearchTerm)) || (l.os && l.os.toLowerCase().includes(lowerCaseSearchTerm));
         return monthMatch && yearMatch && searchMatch;
     });
     
@@ -333,11 +314,12 @@ function generateCsvReport() {
 }
 
 function generateBackupFile() {
-    if (allLancamentosData.length === 0) return showAlertModal('Aviso', 'Não há lançamentos para fazer backup.');
+    if (allLancamentosData.length === 0 && allVariaveisData.length === 0 && allClientesData.length === 0) return showAlertModal('Aviso', 'Não há dados para fazer backup.');
     
     const backupData = {
         lancamentos: allLancamentosData.map(l => ({ ...l, dataEmissao: l.dataEmissao.toDate().toISOString(), faturado: l.faturado ? l.faturado.toDate().toISOString() : null, firestoreId: undefined })),
-        variaveis: allVariaveisData.map(v => ({ ...v, data: v.data.toDate().toISOString(), firestoreId: undefined }))
+        variaveis: allVariaveisData.map(v => ({ ...v, data: v.data.toDate().toISOString(), firestoreId: undefined })),
+        clientes: allClientesData.map(c => ({...c, firestoreId: undefined }))
     };
 
     const jsonString = JSON.stringify(backupData, null, 2);
@@ -358,9 +340,10 @@ async function handleRestoreFile(file) {
             const data = JSON.parse(event.target.result);
             const lancamentos = data.lancamentos || [];
             const variaveis = data.variaveis || [];
-            if (!Array.isArray(lancamentos) || !Array.isArray(variaveis)) throw new Error("Formato de arquivo inválido.");
+            const clientes = data.clientes || [];
+            if (!Array.isArray(lancamentos) || !Array.isArray(variaveis) || !Array.isArray(clientes)) throw new Error("Formato de arquivo inválido.");
 
-            showConfirmModal('Restaurar Backup?', `Adicionar ${lancamentos.length} lançamentos e ${variaveis.length} variáveis? Isso não apagará dados existentes.`, async () => {
+            showConfirmModal('Restaurar Backup?', `Adicionar ${lancamentos.length} lançamentos, ${variaveis.length} variáveis e ${clientes.length} clientes? Isso não apagará dados existentes.`, async () => {
                 showAlertModal('Processando...', 'Restaurando backup...');
                 const batch = writeBatch(db);
 
@@ -373,6 +356,10 @@ async function handleRestoreFile(file) {
                     const newDocRef = doc(collection(db, "variaveis"));
                     const restored = { ...v, data: new Date(v.data) };
                     batch.set(newDocRef, restored);
+                });
+                clientes.forEach(c => {
+                    const newDocRef = doc(collection(db, "clientes"));
+                    batch.set(newDocRef, c);
                 });
 
                 await batch.commit();
@@ -405,7 +392,12 @@ appView.addEventListener('click', async (e) => {
     else if (target.id === 'toggleFormBtn') {
         const formContainer = document.getElementById('formContainer');
         if (formContainer.style.maxHeight) { formContainer.style.maxHeight = null; setTimeout(() => formContainer.innerHTML = '', 500); } 
-        else { formContainer.innerHTML = createNovoLancamentoFormHTML(); formContainer.style.maxHeight = formContainer.scrollHeight + "px"; }
+        else { 
+            formContainer.innerHTML = createNovoLancamentoFormHTML(); 
+            const clientList = document.getElementById('client-list');
+            if(clientList) clientList.innerHTML = allClientesData.map(c => `<option value="${c.nome}"></option>`).join('');
+            formContainer.style.maxHeight = formContainer.scrollHeight + "px"; 
+        }
     } 
     else if (target.id === 'cancelNewLancamento') { const formContainer = document.getElementById('formContainer'); formContainer.style.maxHeight = null; setTimeout(() => formContainer.innerHTML = '', 500); } 
     else if (target.id === 'analiseIaBtn') document.getElementById('nfUploadInput').click();
@@ -438,6 +430,13 @@ appView.addEventListener('click', async (e) => {
             showAlertModal('Sucesso', 'Variável excluída.');
         });
     }
+    else if (target.closest('.delete-cliente-btn')) {
+        const id = target.closest('.delete-cliente-btn').dataset.id;
+        showConfirmModal('Excluir Cliente?', 'Isso não removerá o cliente de lançamentos antigos.', async () => {
+            await deleteDoc(doc(db, 'clientes', id));
+            showAlertModal('Sucesso', 'Cliente excluído.');
+        });
+    }
 });
 
 appView.addEventListener('submit', async (e) => {
@@ -457,21 +456,35 @@ appView.addEventListener('submit', async (e) => {
             });
             form.reset();
         } 
+        else if (form.id === 'addClienteForm') {
+            const nome = form.querySelector('#newClienteNome').value;
+            if (nome && !allClientesData.some(c => c.nome.toLowerCase() === nome.toLowerCase())) {
+                await addDoc(collection(db, "clientes"), { nome });
+                showAlertModal('Sucesso', 'Novo cliente cadastrado!');
+                form.reset();
+            } else {
+                showAlertModal('Aviso', 'Este cliente já está cadastrado.');
+            }
+        }
         else if (form.id === 'novoLancamentoForm' || form.id === 'editLancamentoForm') {
             const isEdit = form.id === 'editLancamentoForm';
             const prefix = isEdit ? 'edit' : 'new';
+            const clienteNome = form.querySelector(`#${prefix}Cliente`).value;
+            const clienteExiste = allClientesData.some(c => c.nome.toLowerCase() === clienteNome.toLowerCase());
+            if (clienteNome && !clienteExiste) {
+                await addDoc(collection(db, "clientes"), { nome: clienteNome });
+            }
+            
             const dateValue = form.querySelector(`#${prefix}DataEmissao`).value;
             const valorTotal = parseFloat(form.querySelector(`#${prefix}ValorTotal`).value) || 0;
             const taxaComissao = parseFloat(form.querySelector(`#${prefix}TaxaComissao`).value) || 0;
             const data = {
                 dataEmissao: Timestamp.fromDate(new Date(dateValue + 'T12:00:00Z')),
-                cliente: form.querySelector(`#${prefix}Cliente`).value,
+                cliente: clienteNome,
                 numeroNf: form.querySelector(`#${prefix}NumeroNf`).value || 'NT',
                 os: form.querySelector(`#${prefix}Os`).value,
                 descricao: form.querySelector(`#${prefix}Descricao`).value,
-                valorTotal,
-                taxaComissao,
-                comissao: valorTotal * (taxaComissao / 100),
+                valorTotal, taxaComissao, comissao: valorTotal * (taxaComissao / 100),
                 obs: form.querySelector(`#${prefix}Obs`).value,
                 ...(isEdit ? {} : { faturado: null })
             };
@@ -495,7 +508,35 @@ appView.addEventListener('submit', async (e) => {
 
 appView.addEventListener('change', async (e) => {
     if (e.target.id === 'nfUploadInput') {
-        // ... (lógica de upload de NF)
+        const files = e.target.files;
+        if (!files.length) return;
+        showAlertModal('Processando...', `Analisando ${files.length} arquivo(s).`);
+        let successCount = 0, errorCount = 0;
+        for (const file of files) {
+            try {
+                const imageData = await extractPdfImage(file);
+                const data = await callGeminiForAnalysis(imageData);
+                let os_pc = data.os || '';
+                if (data.pc) { os_pc = os_pc ? `${os_pc} / ${data.pc}` : data.pc; }
+                const valorTotal = data.valorTotal || 0;
+                await addDoc(collection(db, "lancamentos"), {
+                    dataEmissao: Timestamp.fromDate(new Date(data.dataEmissao + 'T12:00:00Z')),
+                    cliente: data.cliente,
+                    numeroNf: data.numeroNf || 'NT',
+                    os: os_pc,
+                    descricao: data.observacoes,
+                    valorTotal, taxaComissao: 0.5, comissao: valorTotal * (0.5 / 100),
+                    faturado: null, obs: `Analisado por IA a partir de ${file.name}`
+                });
+                successCount++;
+            } catch (error) {
+                console.error(`Erro ao processar ${file.name}:`, error);
+                errorCount++;
+            }
+        }
+        closeModal('alertModal');
+        showAlertModal('Concluído', `${successCount} arquivo(s) processado(s) com sucesso.${errorCount > 0 ? ` ${errorCount} falharam.` : ''}`);
+        e.target.value = '';
     }
     if (e.target.id === 'restoreInput') {
         handleRestoreFile(e.target.files[0]);
