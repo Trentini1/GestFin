@@ -10,8 +10,6 @@ export const createDashboardHTML = (dashboardData, totalVariaveis, startDate, en
     const giroTotalPeriodo = dashboardData.reduce((sum, l) => sum + getGiroTotal(l), 0);
     const totalAReceber = comissoesPeriodo + totalVariaveis;
     const formatDateForInput = (date) => date.toISOString().split('T')[0];
-
-    // Oculta cards de comissão e variáveis para o perfil 'padrão' (Lourival)
     const showFinancials = userProfile.funcao !== 'padrao';
 
     return `
@@ -27,7 +25,6 @@ export const createDashboardHTML = (dashboardData, totalVariaveis, startDate, en
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm text-slate-500">Giro Total</p><p data-value="${giroTotalPeriodo}" class="dashboard-value text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
-            
             ${showFinancials ? `
             <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm text-slate-500">Comissões Faturadas</p><p data-value="${comissoesPeriodo}" class="dashboard-value text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
             <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm text-slate-500">Variáveis</p><p data-value="${totalVariaveis}" class="dashboard-value text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
@@ -80,8 +77,6 @@ export const createLancamentosListHTML = (userProfile) => {
     </div>`;
 };
 
-// ***** INÍCIO DA CORREÇÃO *****
-// A função abaixo foi adicionada para corrigir o erro de importação.
 export const createNovoLancamentoFormHTML = (userProfile) => {
     const showFinancials = userProfile.funcao !== 'padrao';
     return `
@@ -106,7 +101,6 @@ export const createNovoLancamentoFormHTML = (userProfile) => {
                 <input type="text" id="newOs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
             </div>
         </div>
-
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="md:col-span-2">
                 <label for="newDescricao" class="block text-sm font-medium text-slate-700">Motor / Descrição do Serviço</label>
@@ -117,7 +111,6 @@ export const createNovoLancamentoFormHTML = (userProfile) => {
                 <input type="number" step="0.01" id="newValorTotal" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
             </div>
         </div>
-
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
              <div class="md:col-span-2">
                 <label for="newObs" class="block text-sm font-medium text-slate-700">Observação</label>
@@ -130,7 +123,6 @@ export const createNovoLancamentoFormHTML = (userProfile) => {
             </div>
             ` : ''}
         </div>
-        
         <div class="pt-4 border-t">
             <h4 class="text-md font-medium text-slate-700">Impostos sobre a Venda (se houver)</h4>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
@@ -140,7 +132,6 @@ export const createNovoLancamentoFormHTML = (userProfile) => {
                 <div><label class="block text-sm font-medium text-slate-700">ICMS (%)</label><input type="number" step="0.01" id="newImpostoIcms" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
             </div>
         </div>
-
         <div class="flex justify-end gap-3 pt-4 border-t">
           <button type="button" id="cancelNewLancamento" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Cancelar</button>
           <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">Salvar Lançamento</button>
@@ -148,8 +139,6 @@ export const createNovoLancamentoFormHTML = (userProfile) => {
       </form>
     `;
 };
-// ***** FIM DA CORREÇÃO *****
-
 
 export const createLancamentosTableRowsHTML = (lancamentos, userProfile) => {
     const isReadOnly = userProfile.funcao === 'leitura';
@@ -172,24 +161,20 @@ export const createLancamentosTableRowsHTML = (lancamentos, userProfile) => {
 export const createLancamentoDetailHTML = (data, userProfile) => {
     const { lancamento, custosDaOs } = data;
     const isReadOnly = userProfile.funcao === 'leitura';
-    
     const valorTotal = getGiroTotal(lancamento);
     const totalCustos = custosDaOs.reduce((sum, nota) => sum + nota.valorTotal, 0);
-
     const impostos = lancamento.impostos || {};
     const valorIss = valorTotal * ((impostos.iss || 0) / 100);
     const valorPis = valorTotal * ((impostos.pis || 0) / 100);
     const valorCofins = valorTotal * ((impostos.cofins || 0) / 100);
     const valorIcms = valorTotal * ((impostos.icms || 0) / 100);
     const totalImpostos = valorIss + valorPis + valorCofins + valorIcms;
-
     const resultadoFinal = valorTotal - totalCustos - totalImpostos;
 
     return `
     <button class="back-to-list flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
     <form id="editLancamentoForm" data-id="${lancamento.firestoreId}" class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto space-y-6">
         <h2 class="text-2xl font-bold">${isReadOnly ? 'Detalhes do Lançamento' : 'Editar Lançamento'}</h2>
-        
         <fieldset ${isReadOnly ? 'disabled' : ''}>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div><label class="block text-sm font-medium text-slate-700">Data Emissão</label><input type="date" id="editDataEmissao" value="${lancamento.dataEmissao.toDate().toISOString().split('T')[0]}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
@@ -217,7 +202,6 @@ export const createLancamentoDetailHTML = (data, userProfile) => {
                 </div>
             </div>
         </fieldset>
-
         ${!isReadOnly ? `
         <div class="flex justify-end pt-4 border-t">
             <button type="button" id="deleteLancamentoBtn" class="text-red-600 hover:underline mr-auto">Excluir Lançamento</button>
@@ -227,34 +211,78 @@ export const createLancamentoDetailHTML = (data, userProfile) => {
     </form>
     <div class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto mt-8">
         <h3 class="text-xl font-bold mb-4">Análise Financeira da O.S.</h3>
-        ${custosDaOs.length > 0 ? `
-            <div class="space-y-4">
-                ${custosDaOs.map(nota => `
-                    <div class="border p-4 rounded-md bg-slate-50">
-                        <p class="font-semibold">NF de Compra: ${nota.numeroNf} <span class="font-normal text-slate-500">- ${nota.dataEmissao.toDate().toLocaleDateString('pt-BR')}</span></p>
-                        <ul class="list-disc list-inside mt-2 text-sm text-slate-600">
-                            ${nota.itens.map(item => `<li>${item.descricao}: <span class="font-medium">${formatCurrency(item.valor)}</span></li>`).join('')}
-                        </ul>
-                    </div>
-                `).join('')}
-            </div>` : `<p class="text-slate-500">Nenhuma nota fiscal de compra foi vinculada a esta O.S. ainda.</p>`}
+        ${custosDaOs.length > 0 ? `<div class="space-y-4">${custosDaOs.map(nota => `<div class="border p-4 rounded-md bg-slate-50"><p class="font-semibold">NF de Compra: ${nota.numeroNf} <span class="font-normal text-slate-500">- ${nota.dataEmissao.toDate().toLocaleDateString('pt-BR')}</span></p><ul class="list-disc list-inside mt-2 text-sm text-slate-600">${nota.itens.map(item => `<li>${item.descricao}: <span class="font-medium">${formatCurrency(item.valor)}</span></li>`).join('')}</ul></div>`).join('')}</div>` : `<p class="text-slate-500">Nenhuma nota fiscal de compra foi vinculada a esta O.S. ainda.</p>`}
         <div class="mt-6 pt-4 border-t-2 space-y-2">
-            <div class="flex justify-between items-center text-lg">
-                <span class="font-medium text-slate-600">Total de Custos:</span>
-                <span class="font-bold text-red-600">${formatCurrency(totalCustos)}</span>
+            <div class="flex justify-between items-center text-lg"><span class="font-medium text-slate-600">Total de Custos:</span><span class="font-bold text-red-600">${formatCurrency(totalCustos)}</span></div>
+            <div class="flex justify-between items-center text-lg"><span class="font-medium text-slate-600">Total de Impostos:</span><span class="font-bold text-orange-600">${formatCurrency(totalImpostos)}</span></div>
+            <div class="flex justify-between items-center text-xl mt-2"><span class="font-bold text-slate-800">Resultado Final:</span><span class="font-extrabold ${resultadoFinal >= 0 ? 'text-green-700' : 'text-red-700'}">${formatCurrency(resultadoFinal)}</span></div>
+        </div>
+    </div>`;
+};
+
+// ***** INÍCIO DA NOVA CORREÇÃO *****
+// A função createVariaveisViewHTML precisa de uma tabela para renderizar as linhas.
+// A função createVariaveisTableRowsHTML (que causou o erro) é adicionada abaixo.
+
+export const createVariaveisViewHTML = (userProfile) => {
+    const isNotAdmin = userProfile.funcao !== 'admin';
+    return `
+    <div class="space-y-6 max-w-4xl mx-auto">
+        <h2 class="text-2xl font-bold">Gerenciar Variáveis</h2>
+        <form id="addVariavelForm" class="bg-white p-6 rounded-lg shadow space-y-4" ${isNotAdmin ? 'hidden' : ''}>
+            <h3 class="text-lg font-medium">Adicionar Nova Variável</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Data</label>
+                    <input type="date" id="newVariavelData" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Descrição</label>
+                    <input type="text" id="newVariavelDescricao" required placeholder="Ex: Reembolso de viagem" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Valor (R$)</label>
+                    <input type="number" step="0.01" id="newVariavelValor" required placeholder="150.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                </div>
             </div>
-             <div class="flex justify-between items-center text-lg">
-                <span class="font-medium text-slate-600">Total de Impostos:</span>
-                <span class="font-bold text-orange-600">${formatCurrency(totalImpostos)}</span>
+            <div class="flex justify-end">
+                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Variável</button>
             </div>
-            <div class="flex justify-between items-center text-xl mt-2">
-                <span class="font-bold text-slate-800">Resultado Final:</span>
-                <span class="font-extrabold ${resultadoFinal >= 0 ? 'text-green-700' : 'text-red-700'}">${formatCurrency(resultadoFinal)}</span>
+        </form>
+        <div class="bg-white p-6 rounded-lg shadow">
+            <h3 class="text-lg font-medium mb-4">Histórico de Variáveis</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Descrição</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th>
+                            <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="variaveisTableBody"></tbody>
+                </table>
             </div>
         </div>
-    </div>
-    `;
+    </div>`;
 };
+
+export const createVariaveisTableRowsHTML = (variaveis, userProfile) => {
+    const isNotAdmin = userProfile.funcao !== 'admin';
+    if (!variaveis.length) return '<tr><td colspan="4" class="text-center py-10 text-slate-500">Nenhuma variável encontrada.</td></tr>';
+    
+    return variaveis.sort((a,b) => b.data.toDate() - a.data.toDate()).map(v => `
+        <tr class="hover:bg-slate-50">
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${v.data.toDate().toLocaleDateString('pt-BR')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${v.descricao}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(v.valor)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <button class="text-red-600 hover:text-red-900 delete-variavel-btn" data-id="${v.firestoreId}" ${isNotAdmin ? 'hidden' : ''}>Excluir</button>
+            </td>
+        </tr>`).join('');
+};
+// ***** FIM DA NOVA CORREÇÃO *****
 
 export const createClientesViewHTML = () => `
     <div class="space-y-6 max-w-4xl mx-auto">
