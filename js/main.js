@@ -11,7 +11,7 @@ import {
     createLancamentosTableRowsHTML, createLancamentoDetailHTML, showAlertModal,
     showConfirmModal, closeModal, handleConfirm, renderPaginationControls, renderDashboardChart,
     renderNfPieChart, createVariaveisViewHTML, createVariaveisTableRowsHTML,
-    createClientesViewHTML, createClientesTableRowsHTML,
+    createClientesViewHTML, createClientesTableRowsHTML, createClienteDetailHTML,
     createNotasFiscaisViewHTML, createNotasCompraTableRowsHTML
 } from './ui.js';
 
@@ -63,8 +63,8 @@ onAuthStateChanged(auth, user => {
         currentUser = null;
         appView.style.display = 'none';
         loadingView.style.display = 'flex';
-        loaderContainer.classList.add('hidden');
-        loginContainer.classList.remove('hidden');
+        if (loaderContainer) loaderContainer.classList.add('hidden');
+        if (loginContainer) loginContainer.classList.remove('hidden');
         if (lancamentosUnsubscribe) { lancamentosUnsubscribe(); lancamentosUnsubscribe = null; }
         if (variaveisUnsubscribe) { variaveisUnsubscribe(); variaveisUnsubscribe = null; }
         if (clientesUnsubscribe) { clientesUnsubscribe(); clientesUnsubscribe = null; }
@@ -90,7 +90,6 @@ function attachLancamentosListener() {
     lancamentosUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allLancamentosData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        // ATUALIZA APENAS O NECESSÁRIO, SEM REDESENHAR A TELA INTEIRA
         if (currentViewEl && currentViewEl.id === 'lancamentosListView') {
             applyFilters();
         }
@@ -133,6 +132,7 @@ function attachNotasCompraListener() {
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as notas de compra."));
 }
 
+
 // --- Lógica de Navegação e Renderização ---
 async function showView(viewId, dataId = null) {
     allViews.forEach(v => v.style.display = 'none');
@@ -142,14 +142,8 @@ async function showView(viewId, dataId = null) {
     if (viewId === 'dashboardView') {
         const endDateFinal = new Date(dashboardEndDate);
         endDateFinal.setHours(23, 59, 59, 999);
-        const dashboardLancamentos = allLancamentosData.filter(l => {
-            const dataLancamento = l.dataEmissao?.toDate();
-            return dataLancamento && dataLancamento >= dashboardStartDate && dataLancamento <= endDateFinal;
-        });
-        const dashboardVariaveis = allVariaveisData.filter(v => {
-            const dataVariavel = v.data?.toDate();
-            return dataVariavel && dataVariavel >= dashboardStartDate && dataVariavel <= endDateFinal;
-        });
+        const dashboardLancamentos = allLancamentosData.filter(l => l.dataEmissao?.toDate() >= dashboardStartDate && l.dataEmissao?.toDate() <= endDateFinal);
+        const dashboardVariaveis = allVariaveisData.filter(v => v.data?.toDate() >= dashboardStartDate && v.data?.toDate() <= endDateFinal);
         const totalVariaveis = dashboardVariaveis.reduce((sum, v) => sum + v.valor, 0);
         renderView(viewId, { dashboardLancamentos, totalVariaveis, startDate: dashboardStartDate, endDate: dashboardEndDate });
         renderDashboardChart(allLancamentosData);
@@ -181,11 +175,20 @@ async function showView(viewId, dataId = null) {
             showAlertModal("Erro", "Lançamento não encontrado.");
             showView('lancamentosListView');
         }
+    } else if (viewId === 'clienteDetailView' && dataId) {
+        const cliente = allClientesData.find(c => c.firestoreId === dataId);
+        if (cliente) {
+            renderView(viewId, cliente);
+        } else {
+            showAlertModal('Erro', 'Cliente não encontrado.');
+            showView('clientesView');
+        }
+    } else if (viewId === 'lancamentosListView') {
+        renderView(viewId);
+        populateFiltersAndApply();
     } else {
-        renderView(viewId, allLancamentosData);
+        renderView(viewId);
     }
-
-    if (viewId === 'lancamentosListView') populateFiltersAndApply();
 
     navLinks.forEach(link => {
         const isActive = link.dataset.view === viewId;
@@ -207,16 +210,103 @@ function renderView(viewId, data) {
         case 'lancamentosListView': html = createLancamentosListHTML(); break;
         case 'lancamentoDetailView': html = createLancamentoDetailHTML(data); break;
         case 'notasFiscaisView': html = createNotasFiscaisViewHTML(data); break;
+        case 'clienteDetailView': html = createClienteDetailHTML(data); break;
     }
     viewContainer.innerHTML = html;
     lucide.createIcons();
 }
 
-// --- Lógica de Filtros, Ordenação e Paginação (sem alterações) ---
-// ...
+// --- Lógica de Filtros, Ordenação e Paginação ---
+function getFilteredData() {
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    const filtered = allLancamentosData.filter(l => {
+        const date = l.dataEmissao?.toDate();
+        if (!date) return false;
+        const monthMatch = selectedMonthFilter == -1 || date.getMonth() === selectedMonthFilter;
+        const yearMatch = selectedYearFilter == -1 || date.getFullYear() === selectedYearFilter;
+        const searchMatch = !lowerCaseSearchTerm || (l.cliente && l.cliente.toLowerCase().includes(lowerCaseSearchTerm)) || (l.numeroNf && l.numeroNf.toLowerCase().includes(lowerCaseSearchTerm)) || (l.os && l.os.toLowerCase().includes(lowerCaseSearchTerm));
+        return monthMatch && yearMatch && searchMatch;
+    });
 
-// --- Lógica de Relatórios e Backup (sem alterações) ---
-// ...
+    filtered.sort((a, b) => {
+        const valA = sortState.key === 'dataEmissao' ? a.dataEmissao?.toDate()?.getTime() : (a[sortState.key] || '').toLowerCase();
+        const valB = sortState.key === 'dataEmissao' ? b.dataEmissao?.toDate()?.getTime() : (b[sortState.key] || '').toLowerCase();
+        if (valA < valB) return sortState.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return sortState.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    return filtered;
+}
+
+function applyFilters() {
+    const tableBody = document.getElementById('lancamentosTableBody');
+    if (!tableBody) return;
+    const filteredData = getFilteredData();
+    const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
+    currentPage = Math.min(currentPage, totalPages) || 1;
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    const paginatedData = filteredData.slice(start, end);
+    tableBody.innerHTML = createLancamentosTableRowsHTML(paginatedData);
+    renderPaginationControls(currentPage, filteredData.length, totalPages, (direction) => {
+        if (direction === 'prev' && currentPage > 1) currentPage--;
+        if (direction === 'next' && currentPage < totalPages) currentPage++;
+        applyFilters();
+    });
+    lucide.createIcons();
+    updateSortUI();
+}
+
+function populateFiltersAndApply() {
+    const monthFilter = document.getElementById('monthFilter');
+    const yearFilter = document.getElementById('yearFilter');
+    if (!monthFilter || !yearFilter) return;
+
+    if (monthFilter.options.length <= 1) {
+        const months = ["Todos", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+        monthFilter.innerHTML = months.map((month, index) => `<option value="${index - 1}">${month}</option>`).join('');
+    }
+
+    const years = [...new Set(allLancamentosData.map(l => l.dataEmissao?.toDate().getFullYear()).filter(Boolean))].sort((a, b) => b - a);
+    if (!years.includes(new Date().getFullYear())) years.unshift(new Date().getFullYear());
+    yearFilter.innerHTML = `<option value="-1">Todos</option>` + years.map(year => `<option value="${year}">${year}</option>`).join('');
+
+    monthFilter.value = selectedMonthFilter;
+    yearFilter.value = selectedYearFilter;
+    applyFilters();
+
+    monthFilter.onchange = () => { selectedMonthFilter = parseInt(monthFilter.value, 10); currentPage = 1; applyFilters(); };
+    yearFilter.onchange = () => { selectedYearFilter = parseInt(yearFilter.value, 10); currentPage = 1; applyFilters(); };
+
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.value = searchTerm;
+        searchInput.addEventListener('input', (e) => {
+            searchTerm = e.target.value;
+            currentPage = 1;
+            applyFilters();
+        });
+    }
+}
+
+function updateSortUI() {
+    const container = document.getElementById('sort-reset-container');
+    if (!container) return;
+    document.querySelectorAll('.sort-btn i').forEach(icon => icon.setAttribute('data-lucide', 'arrow-down-up'));
+    if (sortState.key !== 'dataEmissao' || sortState.direction !== 'desc') {
+        const activeBtn = document.querySelector(`.sort-btn[data-key="${sortState.key}"]`);
+        if (activeBtn) activeBtn.querySelector('i').setAttribute('data-lucide', sortState.direction === 'asc' ? 'arrow-up' : 'arrow-down');
+        container.innerHTML = `
+            <span class="text-sm text-slate-600 mr-2">Ordenado por: ${sortState.key}</span>
+            <button id="reset-sort" class="text-slate-500 hover:text-red-600 p-1 rounded-full"><i data-lucide="x" class="h-4 w-4"></i></button>`;
+        container.classList.remove('hidden');
+    } else {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+    }
+    lucide.createIcons();
+}
 
 // --- Event Listeners Globais ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -229,37 +319,52 @@ appView.addEventListener('click', async (e) => {
     const { target } = e;
 
     if (target.closest('.nav-link')) { e.preventDefault(); showView(target.closest('.nav-link').dataset.view); }
-    else if (target.closest('.sort-btn')) { /* ... */ }
-    else if (target.closest('#reset-sort')) { /* ... */ }
     else if (target.closest('.view-details')) { showView('lancamentoDetailView', target.closest('.view-details').dataset.id); }
     else if (target.closest('.back-to-list')) { showView('lancamentosListView'); }
-    else if (target.id === 'toggleFormBtn') { /* ... */ }
-    else if (target.id === 'cancelNewLancamento') { /* ... */ }
-    else if (target.id === 'analiseIaBtn') { /* ... */ }
-    else if (target.closest('.faturado-toggle')) { /* ... */ }
-    else if (target.id === 'deleteLancamentoBtn') { /* ... */ }
-    else if (target.id === 'exportPdfBtn') { /* ... */ }
-    else if (target.id === 'exportCsvBtn') { /* ... */ }
-    else if (target.id === 'dashboardFilterBtn') { /* ... */ }
-    else if (target.id === 'backupBtn') { /* ... */ }
-    else if (target.id === 'restoreBtn') { /* ... */ }
-    else if (target.closest('.delete-variavel-btn')) { /* ... */ }
-    else if (target.closest('.delete-cliente-btn')) { /* ... */ }
+    else if (target.closest('.edit-cliente-btn')) { showView('clienteDetailView', target.closest('.edit-cliente-btn').dataset.id); }
+    else if (target.closest('.back-to-list-clientes')) { showView('clientesView'); }
+    else if (target.closest('.delete-cliente-btn')) {
+        const id = target.closest('.delete-cliente-btn').dataset.id;
+        showConfirmModal('Excluir Cliente?', 'Esta ação não pode ser desfeita.', async () => {
+            await deleteDoc(doc(db, 'clientes', id));
+            showAlertModal('Sucesso', 'Cliente excluído.');
+        });
+    }
+    else if (target.closest('.delete-notacompra-btn')) {
+        const id = target.closest('.delete-notacompra-btn').dataset.id;
+        showConfirmModal('Excluir Nota de Compra?', 'Esta ação é permanente.', async () => {
+            await deleteDoc(doc(db, 'notasCompra', id));
+            showAlertModal('Sucesso', 'A nota fiscal de compra foi excluída.');
+        });
+    }
+    else if (target.id === 'addItemBtn') {
+        const container = document.getElementById('itens-container');
+        const newItemHTML = `
+            <div class="item-row grid grid-cols-12 gap-2 items-center">
+                <div class="col-span-8">
+                    <input type="text" placeholder="Descrição do item" class="item-descricao mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+                </div>
+                <div class="col-span-3">
+                    <input type="number" step="0.01" placeholder="Valor" class="item-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+                </div>
+                <div class="col-span-1 text-right">
+                    <button type="button" class="remove-item-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', newItemHTML);
+        lucide.createIcons();
+    } 
+    else if (target.closest('.remove-item-btn')) {
+        target.closest('.item-row').remove();
+    }
     else if (target.closest('.link-to-os')) {
         const lancamentoId = target.closest('.link-to-os').dataset.lancamentoId;
         if (lancamentoId) {
             showView('lancamentoDetailView', lancamentoId);
         }
     }
-    else if (target.closest('.delete-notacompra-btn')) {
-        const id = target.closest('.delete-notacompra-btn').dataset.id;
-        showConfirmModal('Excluir Nota de Compra?', 'Esta ação é permanente e não pode ser desfeita.', async () => {
-            await deleteDoc(doc(db, 'notasCompra', id));
-            showAlertModal('Sucesso', 'A nota fiscal de compra foi excluída.');
-        });
-    }
-    else if (target.id === 'addItemBtn') { /* ... */ } 
-    else if (target.closest('.remove-item-btn')) { /* ... */ }
+    // ... (outros listeners de clique podem ser adicionados aqui)
 });
 
 appView.addEventListener('submit', async (e) => {
@@ -269,9 +374,29 @@ appView.addEventListener('submit', async (e) => {
     if (submitButton) submitButton.disabled = true;
 
     try {
-        if (form.id === 'addVariavelForm') { /* ... */ }
-        else if (form.id === 'addClienteForm') { /* ... */ }
-        
+        if (form.id === 'addClienteForm') {
+            await addDoc(collection(db, "clientes"), {
+                nome: form.querySelector('#newClienteNome').value,
+                cnpj: form.querySelector('#newClienteCnpj').value,
+                endereco: form.querySelector('#newClienteEndereco').value,
+                telefone: form.querySelector('#newClienteTelefone').value,
+                email: form.querySelector('#newClienteEmail').value,
+            });
+            showAlertModal('Sucesso', 'Novo cliente cadastrado!');
+            form.reset();
+        }
+        else if (form.id === 'editClienteForm') {
+            const clienteId = form.dataset.id;
+            await updateDoc(doc(db, "clientes", clienteId), {
+                nome: form.querySelector('#editClienteNome').value,
+                cnpj: form.querySelector('#editClienteCnpj').value,
+                endereco: form.querySelector('#editClienteEndereco').value,
+                telefone: form.querySelector('#editClienteTelefone').value,
+                email: form.querySelector('#editClienteEmail').value,
+            });
+            showAlertModal('Sucesso', 'Dados do cliente atualizados!');
+            showView('clientesView');
+        }
         else if (form.id === 'novoLancamentoForm' || form.id === 'editLancamentoForm') {
             const isEdit = form.id === 'editLancamentoForm';
             const prefix = isEdit ? 'edit' : 'new';
@@ -283,15 +408,18 @@ appView.addEventListener('submit', async (e) => {
                 icms: parseFloat(form.querySelector(`#${prefix}ImpostoIcms`).value) || 0,
             };
 
+            const valorTotal = parseFloat(form.querySelector(`#${prefix}ValorTotal`).value) || 0;
+            const taxaComissao = parseFloat(form.querySelector(`#${prefix}TaxaComissao`).value) || 0;
+
             const data = {
                 dataEmissao: Timestamp.fromDate(new Date(form.querySelector(`#${prefix}DataEmissao`).value + 'T12:00:00Z')),
                 cliente: form.querySelector(`#${prefix}Cliente`).value,
                 numeroNf: form.querySelector(`#${prefix}NumeroNf`).value || 'NT',
                 os: form.querySelector(`#${prefix}Os`).value,
                 descricao: form.querySelector(`#${prefix}Descricao`).value,
-                valorTotal: parseFloat(form.querySelector(`#${prefix}ValorTotal`).value) || 0,
-                taxaComissao: parseFloat(form.querySelector(`#${prefix}TaxaComissao`).value) || 0,
-                comissao: (parseFloat(form.querySelector(`#${prefix}ValorTotal`).value) || 0) * ((parseFloat(form.querySelector(`#${prefix}TaxaComissao`).value) || 0) / 100),
+                valorTotal: valorTotal,
+                taxaComissao: taxaComissao,
+                comissao: valorTotal * (taxaComissao / 100),
                 obs: form.querySelector(`#${prefix}Obs`).value,
                 impostos: impostos,
                 ...(isEdit ? {} : { faturado: null })
@@ -308,7 +436,6 @@ appView.addEventListener('submit', async (e) => {
                 setTimeout(() => formContainer.innerHTML = '', 500);
             }
         }
-        
         else if (form.id === 'addNotaCompraForm') {
             const itens = [];
             let valorTotal = 0;
@@ -355,6 +482,4 @@ appView.addEventListener('submit', async (e) => {
     }
 });
 
-appView.addEventListener('change', async (e) => {
-    // ... (código existente sem alterações)
-});
+// Outros listeners como 'change' podem ser adicionados aqui
