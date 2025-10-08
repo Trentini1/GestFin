@@ -5,17 +5,10 @@ const DEFAULT_COMISSION_RATE = 0.5;
 // --- Funções de criação de HTML ---
 
 export const createDashboardHTML = (dashboardData, totalVariaveis, startDate, endDate) => {
-    const faturamentoPeriodo = dashboardData
-        .filter(l => l.faturado)
-        .reduce((sum, l) => sum + getGiroTotal(l), 0);
-        
-    const comissoesPeriodo = dashboardData
-        .filter(l => l.faturado)
-        .reduce((sum, l) => sum + (l.comissao || 0), 0);
-
+    const faturamentoPeriodo = dashboardData.filter(l => l.faturado).reduce((sum, l) => sum + getGiroTotal(l), 0);
+    const comissoesPeriodo = dashboardData.filter(l => l.faturado).reduce((sum, l) => sum + (l.comissao || 0), 0);
     const giroTotalPeriodo = dashboardData.reduce((sum, l) => sum + getGiroTotal(l), 0);
     const totalAReceber = comissoesPeriodo + totalVariaveis;
-
     const formatDateForInput = (date) => date.toISOString().split('T')[0];
 
     return `
@@ -36,18 +29,8 @@ export const createDashboardHTML = (dashboardData, totalVariaveis, startDate, en
             <div class="bg-green-100 border border-green-300 p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm font-bold text-green-800">Total a Receber</p><p data-value="${totalAReceber}" class="dashboard-value text-2xl font-bold text-green-900">${formatCurrency(0)}</p></div></div></div>
         </div>
         <div class="mt-8 grid grid-cols-1 lg:grid-cols-5 gap-8">
-            <div class="lg:col-span-3 bg-white p-6 rounded-lg shadow">
-                <h3 class="text-lg font-medium mb-4">Faturamento (Últimos 6 Meses)</h3>
-                <div class="relative h-96">
-                    <canvas id="dashboardChart"></canvas>
-                </div>
-            </div>
-            <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow">
-                <h3 class="text-lg font-medium mb-4">Valores Com NF vs Sem NF (no período)</h3>
-                <div class="relative h-96 flex items-center justify-center">
-                    <canvas id="nfPieChart"></canvas>
-                </div>
-            </div>
+            <div class="lg:col-span-3 bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-medium mb-4">Faturamento (Últimos 6 Meses)</h3><div class="relative h-96"><canvas id="dashboardChart"></canvas></div></div>
+            <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-medium mb-4">Valores Com NF vs Sem NF (no período)</h3><div class="relative h-96 flex items-center justify-center"><canvas id="nfPieChart"></canvas></div></div>
         </div>`;
 };
 
@@ -55,32 +38,15 @@ export const createLancamentosListHTML = () => {
     return `
     <div class="space-y-6">
         <div class="flex space-x-4">
-            <button id="toggleFormBtn" class="w-full flex justify-center items-center py-3 px-4 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:bg-slate-200 hover:border-slate-400 transition-colors">
-                <i data-lucide="plus" class="w-5 h-5 mr-2"></i> Adicionar Lançamento Manual
-            </button>
-            <button id="analiseIaBtn" class="w-full flex justify-center items-center py-3 px-4 bg-indigo-100 text-indigo-700 border-2 border-dashed border-indigo-300 rounded-lg hover:bg-indigo-200 hover:border-indigo-400 transition-colors font-semibold">
-                <i data-lucide="scan-line" class="w-5 h-5 mr-2"></i> Analisar NF com IA
-            </button>
+            <button id="toggleFormBtn" class="w-full flex justify-center items-center py-3 px-4 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:bg-slate-200 hover:border-slate-400 transition-colors"><i data-lucide="plus" class="w-5 h-5 mr-2"></i> Adicionar Lançamento Manual</button>
+            <button id="analiseIaBtn" class="w-full flex justify-center items-center py-3 px-4 bg-indigo-100 text-indigo-700 border-2 border-dashed border-indigo-300 rounded-lg hover:bg-indigo-200 hover:border-indigo-400 transition-colors font-semibold"><i data-lucide="scan-line" class="w-5 h-5 mr-2"></i> Analisar NF com IA</button>
             <input type="file" id="nfUploadInput" class="hidden" accept="application/pdf" multiple>
         </div>
         <div id="formContainer"></div>
-        <div class="relative">
-            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i>
-            <input type="search" id="searchInput" placeholder="Buscar por cliente, NF ou O.S..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-        </div>
+        <div class="relative"><i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i><input type="search" id="searchInput" placeholder="Buscar por cliente, NF ou O.S..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></div>
         <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <h2 class="text-2xl font-bold">Histórico de Lançamentos</h2>
-            <div id="sort-reset-container" class="hidden items-center"></div>
-            <div class="flex items-center gap-4">
-                <div class="flex items-center gap-2">
-                    <label for="monthFilter" class="text-sm font-medium">Mês:</label>
-                    <select id="monthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select>
-                </div>
-                <div class="flex items-center gap-2">
-                    <label for="yearFilter" class="text-sm font-medium">Ano:</label>
-                    <select id="yearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select>
-                </div>
-            </div>
+            <h2 class="text-2xl font-bold">Histórico de Lançamentos</h2><div id="sort-reset-container" class="hidden items-center"></div>
+            <div class="flex items-center gap-4"><div class="flex items-center gap-2"><label for="monthFilter" class="text-sm font-medium">Mês:</label><select id="monthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div><div class="flex items-center gap-2"><label for="yearFilter" class="text-sm font-medium">Ano:</label><select id="yearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div></div>
         </div>
         <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
             <table class="min-w-full divide-y divide-slate-200">
@@ -88,37 +54,17 @@ export const createLancamentosListHTML = () => {
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="dataEmissao">Data Emissão <i data-lucide="arrow-down-up" class="h-4 w-4"></i></button></th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="cliente">Cliente <i data-lucide="arrow-down-up" class="h-4 w-4"></i></button></th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">NF</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">O.S/PC</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Giro Total</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Comissão</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Faturado</th>
-                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">NF</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">O.S/PC</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Giro Total</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Comissão</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Faturado</th><th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
                     </tr>
                 </thead>
                 <tbody id="lancamentosTableBody" class="bg-white divide-y divide-slate-200"></tbody>
             </table>
         </div>
         <div id="pagination-controls" class="flex justify-between items-center text-sm"></div>
-        <div class="mt-8 bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Exportar Relatório</h3>
-            <div class="flex space-x-4">
-                <button id="exportPdfBtn" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="printer" class="w-4 h-4 mr-2"></i> Imprimir / Salvar PDF</button>
-                <button id="exportCsvBtn" class="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="file-spreadsheet" class="w-4 h-4 mr-2"></i> Exportar para CSV (Excel)</button>
-            </div>
-        </div>
-        <div class="mt-8 bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Backup e Restauração</h3>
-            <p class="text-sm text-slate-500 mb-4">Salve todos os seus dados em um arquivo JSON ou restaure a partir de um backup anterior.</p>
-            <div class="flex space-x-4">
-                <button id="backupBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="download" class="w-4 h-4 mr-2"></i> Fazer Backup (JSON)</button>
-                <button id="restoreBtn" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="upload" class="w-4 h-4 mr-2"></i> Restaurar Backup</button>
-                <input type="file" id="restoreInput" class="hidden" accept=".json">
-            </div>
-        </div>
+        <div class="mt-8 bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-medium mb-4">Exportar Relatório</h3><div class="flex space-x-4"><button id="exportPdfBtn" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="printer" class="w-4 h-4 mr-2"></i> Imprimir / Salvar PDF</button><button id="exportCsvBtn" class="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="file-spreadsheet" class="w-4 h-4 mr-2"></i> Exportar para CSV (Excel)</button></div></div>
+        <div class="mt-8 bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-medium mb-4">Backup e Restauração</h3><p class="text-sm text-slate-500 mb-4">Salve todos os seus dados ou restaure a partir de um backup.</p><div class="flex space-x-4"><button id="backupBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="download" class="w-4 h-4 mr-2"></i> Fazer Backup (JSON)</button><button id="restoreBtn" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="upload" class="w-4 h-4 mr-2"></i> Restaurar Backup</button><input type="file" id="restoreInput" class="hidden" accept=".json"></div></div>
     </div>`;
 };
-
 export const createVariaveisViewHTML = () => {
     const today = new Date().toISOString().split('T')[0];
     return `
@@ -138,15 +84,7 @@ export const createVariaveisViewHTML = () => {
             <h3 class="text-lg font-medium mb-4">Histórico de Variáveis</h3>
             <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
                 <table class="min-w-full divide-y divide-slate-200">
-                    <thead class="bg-slate-50">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Descrição</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th>
-                            <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
-                        </tr>
-                    </thead>
+                    <thead class="bg-slate-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Descrição</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th><th class="relative px-6 py-3"><span class="sr-only">Ações</span></th></tr></thead>
                     <tbody id="variaveisTableBody" class="bg-white divide-y divide-slate-200"></tbody>
                 </table>
             </div>
@@ -232,54 +170,30 @@ export const createLancamentoDetailHTML = (lancamento) => {
     </form>`;
 };
 
-export const createDashboardHTML = (dashboardData, totalVariaveis, startDate, endDate) => { /* ... */ };
-export const createLancamentosListHTML = () => { /* ... */ };
-export const createVariaveisViewHTML = () => { /* ... */ };
-export const createVariaveisTableRowsHTML = (variaveis) => { /* ... */ };
-export const createNovoLancamentoFormHTML = () => { /* ... */ };
-export const createLancamentosTableRowsHTML = (lancamentos) => { /* ... */ };
-export const createLancamentoDetailHTML = (lancamento) => { /* ... */ };
 export const createClientesViewHTML = () => `
-
     <div class="space-y-6 max-w-4xl mx-auto">
         <h2 class="text-2xl font-bold">Gerenciar Clientes</h2>
         <form id="addClienteForm" class="bg-white p-6 rounded-lg shadow space-y-4">
             <h3 class="text-lg font-medium">Adicionar Novo Cliente</h3>
-            <div>
-                <label class="block text-sm font-medium text-slate-700">Nome do Cliente</label>
-                <input type="text" id="newClienteNome" required placeholder="Nome completo ou Razão Social" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-            </div>
-            <div class="flex justify-end">
-                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Cliente</button>
-            </div>
+            <div><label class="block text-sm font-medium text-slate-700">Nome do Cliente</label><input type="text" id="newClienteNome" required placeholder="Nome completo ou Razão Social" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+            <div class="flex justify-end"><button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Cliente</button></div>
         </form>
         <div class="bg-white p-6 rounded-lg shadow">
             <h3 class="text-lg font-medium mb-4">Clientes Cadastrados</h3>
             <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
-                    </tr>
-                </thead>
+                <thead class="bg-slate-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th><th class="relative px-6 py-3"><span class="sr-only">Ações</span></th></tr></thead>
                 <tbody id="clientesTableBody"></tbody>
             </table>
         </div>
-    </div>
-`;
+    </div>`;
 
 export const createClientesTableRowsHTML = (clientes) => {
     if (!clientes.length) return '<tr><td colspan="2" class="text-center py-10 text-slate-500">Nenhum cliente cadastrado.</td></tr>';
-    return clientes
-        .sort((a,b) => a.nome.localeCompare(b.nome))
-        .map(c => `
+    return clientes.sort((a,b) => a.nome.localeCompare(b.nome)).map(c => `
         <tr class="hover:bg-slate-50">
             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${c.nome}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button class="text-red-600 hover:text-red-900 delete-cliente-btn" data-id="${c.firestoreId}">Excluir</button>
-            </td>
-        </tr>
-    `).join('');
+            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"><button class="text-red-600 hover:text-red-900 delete-cliente-btn" data-id="${c.firestoreId}">Excluir</button></td>
+        </tr>`).join('');
 };
 
 let confirmCallback = null;
@@ -352,42 +266,3 @@ export function renderNfPieChart(lancamentosNoPeriodo) {
     if (nfPieChart) nfPieChart.destroy();
     nfPieChart = new Chart(ctx, { type: 'doughnut', data, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' }, tooltip: { callbacks: { label: context => `${context.label || ''}: ${formatCurrency(context.parsed)}` } } } } });
 }
-export const createClientesViewHTML = () => `
-    <div class="space-y-6 max-w-4xl mx-auto">
-        <h2 class="text-2xl font-bold">Gerenciar Clientes</h2>
-        <form id="addClienteForm" class="bg-white p-6 rounded-lg shadow space-y-4">
-            <h3 class="text-lg font-medium">Adicionar Novo Cliente</h3>
-            <div>
-                <label class="block text-sm font-medium text-slate-700">Nome do Cliente</label>
-                <input type="text" id="newClienteNome" required placeholder="Nome completo ou Razão Social" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-            </div>
-            <div class="flex justify-end">
-                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Cliente</button>
-            </div>
-        </form>
-        <div class="bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Clientes Cadastrados</h3>
-            <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
-                    </tr>
-                </thead>
-                <tbody id="clientesTableBody"></tbody>
-            </table>
-        </div>
-    </div>
-`;
-
-export const createClientesTableRowsHTML = (clientes) => {
-    if (!clientes.length) return '<tr><td colspan="2" class="text-center py-10 text-slate-500">Nenhum cliente cadastrado.</td></tr>';
-    return clientes.sort((a,b) => a.nome.localeCompare(b.nome)).map(c => `
-        <tr class="hover:bg-slate-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${c.nome}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button class="text-red-600 hover:text-red-900 delete-cliente-btn" data-id="${c.firestoreId}">Excluir</button>
-            </td>
-        </tr>
-    `).join('');
-};
