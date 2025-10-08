@@ -67,8 +67,44 @@
         </main>
     </div>
 
-    <div id="alertModal" class="modal hidden ..."></div>
-    <div id="confirmModal" class="modal hidden ..."></div>
+    <div id="alertModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50">
+        <div class="relative mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 class="text-lg leading-6 font-medium text-gray-900" id="alertModalTitle">Título do Alerta</h3>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-500" id="alertModalMessage">
+                        Mensagem do alerta aqui.
+                    </p>
+                </div>
+                <div class="items-center px-4 py-3">
+                    <button id="alertModalCloseButton" class="px-4 py-2 bg-indigo-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirmModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50">
+        <div class="relative mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 class="text-lg leading-6 font-medium text-gray-900" id="confirmModalTitle">Confirmar Ação</h3>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-500" id="confirmModalMessage">
+                        Você tem certeza?
+                    </p>
+                </div>
+                <div class="flex justify-center gap-4 px-4 py-3">
+                    <button id="confirmModalCancelButton" class="px-4 py-2 bg-gray-200 text-gray-800 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-300">
+                        Cancelar
+                    </button>
+                    <button id="confirmModalConfirmButton" class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-red-700">
+                        Confirmar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
