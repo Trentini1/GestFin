@@ -248,6 +248,85 @@ function generateCsvReport() {
     document.body.appendChild(link); 
     link.click();
     document.body.removeChild(link);
+    function generatePrintReport() {
+    const filtered = getFilteredData();
+    if (filtered.length === 0) {
+        showAlertModal('Aviso', 'Não há dados para exportar com os filtros selecionados.');
+        return;
+    }
+    
+    const monthName = document.getElementById('monthFilter').options[document.getElementById('monthFilter').selectedIndex].text;
+    const yearName = document.getElementById('yearFilter').options[document.getElementById('yearFilter').selectedIndex].text;
+    const title = `Relatório de Lançamentos: ${monthName} de ${yearName}`;
+    
+    let reportHTML = `
+        <html>
+        <head>
+            <title>${title}</title>
+            <style>
+                body { font-family: sans-serif; margin: 1cm; color: #333; }
+                h1 { font-size: 18px; border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-bottom: 20px; }
+                table { width: 100%; border-collapse: collapse; font-size: 10px; }
+                th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                .summary { margin-top: 20px; border-top: 2px solid #333; padding-top: 10px; font-size: 12px; }
+                h2 { font-size: 16px; }
+                @media print { body { -webkit-print-color-adjust: exact; } }
+            </style>
+        </head>
+        <body>
+            <h1>${title}</h1>
+    `;
+
+    const totalGiro = filtered.reduce((sum, l) => sum + getGiroTotal(l), 0);
+    const totalComissao = filtered.reduce((sum, l) => sum + (l.comissao || 0), 0);
+
+    reportHTML += `
+        <table>
+            <thead>
+                <tr>
+                    <th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Motor</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    filtered.forEach(l => { // Usando o filteredData já ordenado
+        reportHTML += `
+            <tr>
+                <td>${l.dataEmissao?.toDate().toLocaleDateString('pt-BR')}</td>
+                <td>${l.cliente || '-'}</td>
+                <td>${l.numeroNf || 'NT'}</td>
+                <td>${l.os || ''}</td>
+                <td>${l.descricao || '-'}</td>
+                <td>${formatCurrency(getGiroTotal(l))}</td>
+                <td>${formatCurrency(l.comissao)}</td>
+                <td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td>
+            </tr>
+        `;
+    });
+
+    reportHTML += `
+            </tbody>
+        </table>
+        <div class="summary">
+            <h2>Resumo do Período</h2>
+            <p><strong>Total Lançado (Giro):</strong> ${formatCurrency(totalGiro)}</p>
+            <p><strong>Total em Comissões:</strong> ${formatCurrency(totalComissao)}</p>
+        </div>
+        <script>
+            window.onload = function() {
+                window.print();
+            }
+        <\/script>
+        </body>
+        </html>
+    `;
+    
+    const printWindow = window.open('', '', 'height=800,width=800');
+    printWindow.document.write(reportHTML);
+    printWindow.document.close();
+}
 }
 
 // --- Event Listeners Globais ---
@@ -301,7 +380,7 @@ appView.addEventListener('click', async (e) => {
         }
     } 
     else if (target.id === 'exportPdfBtn') showAlertModal('Info', 'Funcionalidade de relatório PDF a ser implementada.');
-    else if (target.id === 'exportCsvBtn') generateCsvReport();
+    else if (target.id === 'exportPdfBtn') generatePrintReport();
 });
 
 appView.addEventListener('submit', async (e) => {
