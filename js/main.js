@@ -73,12 +73,12 @@ onAuthStateChanged(auth, user => {
 });
 
 loginButton.addEventListener('click', () => {
-    loaderContainer.classList.remove('hidden');
-    loginContainer.classList.add('hidden');
+    if(loaderContainer) loaderContainer.classList.remove('hidden');
+    if(loginContainer) loginContainer.classList.add('hidden');
     signInAnonymously(auth).catch(error => {
         showAlertModal('Erro de Autenticação', error.message);
-        loaderContainer.classList.add('hidden');
-        loginContainer.classList.remove('hidden');
+        if(loaderContainer) loaderContainer.classList.add('hidden');
+        if(loginContainer) loginContainer.classList.remove('hidden');
     });
 });
 
@@ -125,9 +125,8 @@ function attachNotasCompraListener() {
     notasCompraUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allNotasCompraData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl && currentViewEl.id === 'notasFiscaisView') {
-            const tableBody = document.getElementById('notasCompraTableBody');
-            if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(allNotasCompraData, allLancamentosData);
+        if (currentViewEl && (currentViewEl.id === 'notasFiscaisView' || currentViewEl.id === 'lancamentoDetailView')) {
+            showView(currentViewEl.id, currentViewEl.querySelector('form')?.dataset.id);
         }
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as notas de compra."));
 }
@@ -308,6 +307,83 @@ function updateSortUI() {
     lucide.createIcons();
 }
 
+// --- Lógica de Relatórios e Backup ---
+function generatePrintReport() {
+    const filtered = getFilteredData();
+    if (filtered.length === 0) return showAlertModal('Aviso', 'Não há dados para exportar.');
+    const title = `Relatório de Lançamentos`;
+    let reportHTML = `<html><head><title>${title}</title><style>body{font-family:sans-serif;margin:1cm;color:#333}h1{font-size:18px;border-bottom:1px solid #ccc;padding-bottom:10px;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:10px}th,td{border:1px solid #ddd;padding:6px;text-align:left}th{background-color:#f2f2f2}.summary{margin-top:20px;border-top:2px solid #333;padding-top:10px;font-size:12px}h2{font-size:16px}@media print{body{-webkit-print-color-adjust:exact}}</style></head><body><h1>${title}</h1>`;
+    const totalGiro = filtered.reduce((sum, l) => sum + getGiroTotal(l), 0);
+    const totalComissao = filtered.reduce((sum, l) => sum + (l.comissao || 0), 0);
+    reportHTML += `<table><thead><tr><th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Motor</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th></tr></thead><tbody>`;
+    filtered.forEach(l => {
+        reportHTML += `<tr><td>${l.dataEmissao?.toDate().toLocaleDateString('pt-BR')}</td><td>${l.cliente || '-'}</td><td>${l.numeroNf || 'NT'}</td><td>${l.os || ''}</td><td>${l.descricao || '-'}</td><td>${formatCurrency(getGiroTotal(l))}</td><td>${formatCurrency(l.comissao)}</td><td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td></tr>`;
+    });
+    reportHTML += `</tbody></table><div class="summary"><h2>Resumo do Período</h2><p><strong>Total Lançado (Giro):</strong> ${formatCurrency(totalGiro)}</p><p><strong>Total em Comissões:</strong> ${formatCurrency(totalComissao)}</p></div><script>window.onload=function(){window.print()}<\/script></body></html>`;
+    const printWindow = window.open('', '', 'height=800,width=800');
+    printWindow.document.write(reportHTML);
+    printWindow.document.close();
+}
+
+function generateCsvReport() {
+    const filtered = getFilteredData();
+    if (filtered.length === 0) return showAlertModal('Aviso', 'Não há dados para exportar.');
+    const head = ['Data Emissao', 'Cliente', 'NF', 'OS/PC', 'Motor', 'Valor Total', 'Comissao', 'Faturado', 'Data Faturamento'];
+    const body = filtered.map(l => [ l.dataEmissao?.toDate().toLocaleDateString('pt-BR'), `"${(l.cliente || '').replace(/"/g, '""')}"`, l.numeroNf || 'NT', `"${(l.os || '').replace(/"/g, '""')}"`, `"${(l.descricao || '').replace(/"/g, '""')}"`, getGiroTotal(l).toFixed(2).replace('.',','), (l.comissao || 0).toFixed(2).replace('.',','), l.faturado ? 'Sim' : 'Nao', l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : '' ]);
+    const csvContent = "data:text/csv;charset=utf-8," + head.join(';') + '\n' + body.map(e => e.join(';')).join('\n');
+    const link = document.createElement("a");
+    link.setAttribute("href", encodeURI(csvContent));
+    link.setAttribute("download", "relatorio_lancamentos.csv");
+    document.body.appendChild(link); 
+    link.click();
+    document.body.removeChild(link);
+}
+
+function generateBackupFile() {
+    if (allLancamentosData.length === 0 && allVariaveisData.length === 0 && allClientesData.length === 0 && allNotasCompraData.length === 0) return showAlertModal('Aviso', 'Não há dados para fazer backup.');
+    const backupData = {
+        lancamentos: allLancamentosData.map(l => ({ ...l, dataEmissao: l.dataEmissao.toDate().toISOString(), faturado: l.faturado ? l.faturado.toDate().toISOString() : null, firestoreId: undefined })),
+        variaveis: allVariaveisData.map(v => ({ ...v, data: v.data.toDate().toISOString(), firestoreId: undefined })),
+        clientes: allClientesData.map(c => ({...c, firestoreId: undefined })),
+        notasCompra: allNotasCompraData.map(n => ({...n, dataEmissao: n.dataEmissao.toDate().toISOString(), firestoreId: undefined }))
+    };
+    const jsonString = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup-gestao-pro-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+async function handleRestoreFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const data = JSON.parse(event.target.result);
+            const { lancamentos = [], variaveis = [], clientes = [], notasCompra = [] } = data;
+            if (![lancamentos, variaveis, clientes, notasCompra].every(Array.isArray)) throw new Error("Formato de arquivo inválido.");
+
+            showConfirmModal('Restaurar Backup?', `Isso adicionará novos dados e não apagará os existentes. Continuar?`, async () => {
+                showAlertModal('Processando...', 'Restaurando backup...');
+                const batch = writeBatch(db);
+                lancamentos.forEach(l => batch.set(doc(collection(db, "lancamentos")), { ...l, dataEmissao: new Date(l.dataEmissao), faturado: l.faturado ? new Date(l.faturado) : null }));
+                variaveis.forEach(v => batch.set(doc(collection(db, "variaveis")), { ...v, data: new Date(v.data) }));
+                clientes.forEach(c => batch.set(doc(collection(db, "clientes")), c));
+                notasCompra.forEach(n => batch.set(doc(collection(db, "notasCompra")), { ...n, dataEmissao: new Date(n.dataEmissao) }));
+                await batch.commit();
+                closeModal('alertModal');
+                showAlertModal('Sucesso!', 'Backup restaurado com sucesso.');
+            });
+        } catch (error) {
+            showAlertModal('Erro de Restauração', `Arquivo de backup inválido. Erro: ${error.message}`);
+        }
+    };
+    reader.readAsText(file);
+}
+
 // --- Event Listeners Globais ---
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('alertModalCloseButton').addEventListener('click', () => closeModal('alertModal'));
@@ -319,20 +395,27 @@ appView.addEventListener('click', async (e) => {
     const { target } = e;
 
     if (target.closest('.nav-link')) { e.preventDefault(); showView(target.closest('.nav-link').dataset.view); }
+    else if (target.closest('.sort-btn')) { 
+        const key = target.closest('.sort-btn').dataset.key;
+        sortState.direction = (sortState.key === key && sortState.direction === 'asc') ? 'desc' : 'asc';
+        sortState.key = key;
+        applyFilters();
+    }
+    else if (target.closest('#reset-sort')) { 
+        sortState = { key: 'dataEmissao', direction: 'desc' }; 
+        applyFilters(); 
+    }
     else if (target.closest('.view-details')) { showView('lancamentoDetailView', target.closest('.view-details').dataset.id); }
     else if (target.closest('.back-to-list')) { showView('lancamentosListView'); }
     else if (target.closest('.edit-cliente-btn')) { showView('clienteDetailView', target.closest('.edit-cliente-btn').dataset.id); }
     else if (target.closest('.back-to-list-clientes')) { showView('clientesView'); }
     else if (target.id === 'dashboardFilterBtn') {
-    const startDateValue = document.getElementById('dashboardStartDate').value;
-    const endDateValue = document.getElementById('dashboardEndDate').value;
-
-    // Adicionar T00:00:00 para evitar problemas de fuso horário
-    dashboardStartDate = new Date(startDateValue + 'T00:00:00');
-    dashboardEndDate = new Date(endDateValue + 'T00:00:00');
-
-    showView('dashboardView');
-}
+        const startDateValue = document.getElementById('dashboardStartDate').value;
+        const endDateValue = document.getElementById('dashboardEndDate').value;
+        dashboardStartDate = new Date(startDateValue + 'T00:00:00');
+        dashboardEndDate = new Date(endDateValue + 'T00:00:00');
+        showView('dashboardView');
+    }
     else if (target.closest('.delete-cliente-btn')) {
         const id = target.closest('.delete-cliente-btn').dataset.id;
         showConfirmModal('Excluir Cliente?', 'Esta ação não pode ser desfeita.', async () => {
@@ -349,6 +432,7 @@ appView.addEventListener('click', async (e) => {
     }
     else if (target.id === 'addItemBtn') {
         const container = document.getElementById('itens-container');
+        if (!container) return;
         const newItemHTML = `
             <div class="item-row grid grid-cols-12 gap-2 items-center">
                 <div class="col-span-8">
@@ -374,7 +458,46 @@ appView.addEventListener('click', async (e) => {
             showView('lancamentoDetailView', lancamentoId);
         }
     }
-    // ... (outros listeners de clique podem ser adicionados aqui)
+    else if (target.id === 'toggleFormBtn') {
+        const formContainer = document.getElementById('formContainer');
+        if (formContainer.style.maxHeight) {
+            formContainer.style.maxHeight = null;
+            setTimeout(() => { if (formContainer) formContainer.innerHTML = ''; }, 500);
+        } else {
+            formContainer.innerHTML = createNovoLancamentoFormHTML();
+            const clientList = document.getElementById('client-list');
+            if (clientList) clientList.innerHTML = allClientesData.map(c => `<option value="${c.nome}"></option>`).join('');
+            document.getElementById('newDataEmissao').valueAsDate = new Date();
+            formContainer.style.maxHeight = formContainer.scrollHeight + "px";
+        }
+    }
+    else if (target.id === 'cancelNewLancamento') {
+        const formContainer = document.getElementById('formContainer');
+        if(formContainer) {
+            formContainer.style.maxHeight = null;
+            setTimeout(() => formContainer.innerHTML = '', 500);
+        }
+    }
+    else if (target.id === 'analiseIaBtn') {
+        document.getElementById('nfUploadInput').click();
+    }
+    else if (target.closest('.faturado-toggle')) {
+        const button = target.closest('.faturado-toggle');
+        const lancamento = allLancamentosData.find(l => l.firestoreId === button.dataset.id);
+        if (lancamento) await updateDoc(doc(db, 'lancamentos', button.dataset.id), { faturado: lancamento.faturado ? null : new Date() });
+    } 
+    else if (target.id === 'deleteLancamentoBtn') {
+        const form = target.closest('form');
+        if (form) showConfirmModal('Excluir Lançamento?', 'Esta ação é permanente.', async () => {
+            await deleteDoc(doc(db, "lancamentos", form.dataset.id));
+            showAlertModal('Excluído!', 'O lançamento foi removido.');
+            showView('lancamentosListView');
+        });
+    }
+    else if (target.id === 'exportPdfBtn') { generatePrintReport(); }
+    else if (target.id === 'exportCsvBtn') { generateCsvReport(); }
+    else if (target.id === 'backupBtn') { generateBackupFile(); }
+    else if (target.id === 'restoreBtn') { document.getElementById('restoreInput').click(); }
 });
 
 appView.addEventListener('submit', async (e) => {
@@ -417,10 +540,8 @@ appView.addEventListener('submit', async (e) => {
                 cofins: parseFloat(form.querySelector(`#${prefix}ImpostoCofins`).value) || 0,
                 icms: parseFloat(form.querySelector(`#${prefix}ImpostoIcms`).value) || 0,
             };
-
             const valorTotal = parseFloat(form.querySelector(`#${prefix}ValorTotal`).value) || 0;
             const taxaComissao = parseFloat(form.querySelector(`#${prefix}TaxaComissao`).value) || 0;
-
             const data = {
                 dataEmissao: Timestamp.fromDate(new Date(form.querySelector(`#${prefix}DataEmissao`).value + 'T12:00:00Z')),
                 cliente: form.querySelector(`#${prefix}Cliente`).value,
@@ -442,8 +563,10 @@ appView.addEventListener('submit', async (e) => {
             } else {
                 await addDoc(collection(db, "lancamentos"), data);
                 const formContainer = document.getElementById('formContainer');
-                formContainer.style.maxHeight = null;
-                setTimeout(() => formContainer.innerHTML = '', 500);
+                if (formContainer) {
+                    formContainer.style.maxHeight = null;
+                    setTimeout(() => formContainer.innerHTML = '', 500);
+                }
             }
         }
         else if (form.id === 'addNotaCompraForm') {
@@ -481,8 +604,9 @@ appView.addEventListener('submit', async (e) => {
                 impostos: impostosCompra
             });
             form.reset();
-            document.getElementById('itens-container').innerHTML = '';
-            document.getElementById('addItemBtn').click();
+            const itensContainer = document.getElementById('itens-container');
+            if(itensContainer) itensContainer.innerHTML = '';
+            document.getElementById('addItemBtn')?.click();
             showAlertModal('Sucesso!', 'Nota Fiscal de compra salva.');
         }
     } catch (error) {
@@ -492,4 +616,40 @@ appView.addEventListener('submit', async (e) => {
     }
 });
 
-// Outros listeners como 'change' podem ser adicionados aqui
+appView.addEventListener('change', async (e) => {
+    if (e.target.id === 'nfUploadInput') {
+        const files = e.target.files;
+        if (!files.length) return;
+        showAlertModal('Processando...', `Analisando ${files.length} arquivo(s). Aguarde...`);
+        let successCount = 0, errorCount = 0;
+        for (const file of files) {
+            try {
+                const imageData = await extractPdfImage(file);
+                const data = await callGeminiForAnalysis(imageData);
+                let os_pc = data.os || '';
+                if (data.pc) { os_pc = os_pc ? `${os_pc} / ${data.pc}` : data.pc; }
+                const valorTotal = data.valorTotal || 0;
+                await addDoc(collection(db, "lancamentos"), {
+                    dataEmissao: Timestamp.fromDate(new Date(data.dataEmissao + 'T12:00:00Z')),
+                    cliente: data.cliente,
+                    numeroNf: data.numeroNf || 'NT',
+                    os: os_pc,
+                    descricao: data.observacoes,
+                    valorTotal, taxaComissao: 0.5, comissao: valorTotal * (0.5 / 100),
+                    faturado: null, obs: `Analisado por IA a partir de ${file.name}`
+                });
+                successCount++;
+            } catch (error) {
+                console.error(`Erro ao processar ${file.name}:`, error);
+                errorCount++;
+            }
+        }
+        closeModal('alertModal');
+        showAlertModal('Concluído', `${successCount} arquivo(s) processado(s) com sucesso.${errorCount > 0 ? ` ${errorCount} falharam.` : ''}`);
+        e.target.value = '';
+    }
+    if (e.target.id === 'restoreInput') {
+        handleRestoreFile(e.target.files[0]);
+        e.target.value = '';
+    }
+});
