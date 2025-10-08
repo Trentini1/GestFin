@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestão Financeira PRO | Lançamentos</title>
+    <title>Gestão Financeira PRO</title>
+
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,12 +26,9 @@
             </div>
             <div id="loginContainer" class="hidden">
                 <p class="text-slate-600 mb-4">Acesse o sistema para gerenciar seus lançamentos.</p>
-                <button id="loginButton" class="w-full py-3 font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
-                    Acessar
-                </button>
+                <button id="loginButton" class="w-full py-3 font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">Acessar</button>
                 <p class="text-xs text-slate-500 mt-4">Usando autenticação anônima do Firebase.</p>
             </div>
-            <p id="loginError" class="text-sm text-center text-red-500 hidden"></p>
         </div>
     </div>
 
@@ -42,13 +41,12 @@
                         <nav class="hidden md:flex space-x-4">
                             <a href="#" class="nav-link text-indigo-600 border-b-2 border-indigo-600 px-1 py-4 text-sm font-medium" data-view="dashboardView">Dashboard</a>
                             <a href="#" class="nav-link text-slate-500 hover:text-slate-700 px-1 py-4 text-sm font-medium" data-view="lancamentosListView">Lançamentos</a>
+                            <a href="#" class="nav-link text-slate-500 hover:text-slate-700 px-1 py-4 text-sm font-medium" data-view="variaveisView">Variáveis</a>
                         </nav>
                     </div>
                     <div class="flex items-center">
                         <span class="text-sm text-slate-600 mr-4">Usuário: <span id="userId" class="font-medium"></span></span>
-                        <button id="logoutButton" class="text-slate-500 hover:text-indigo-600">
-                            <i data-lucide="log-out" class="w-5 h-5"></i>
-                        </button>
+                        <button id="logoutButton" class="text-slate-500 hover:text-indigo-600"><i data-lucide="log-out" class="w-5 h-5"></i></button>
                     </div>
                 </div>
             </div>
@@ -58,17 +56,18 @@
             <div id="dashboardView" class="view"></div>
             <div id="lancamentosListView" class="view"></div>
             <div id="lancamentoDetailView" class="view"></div>
+            <div id="variaveisView" class="view"></div>
         </main>
     </div>
 
-    <div id="alertModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center"><div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm"><h3 id="alertModalTitle" class="text-lg font-medium"></h3><p id="alertModalMessage" class="mt-2 text-sm text-slate-600"></p><div class="mt-4 flex justify-end"><button id="alertModalCloseButton" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">OK</button></div></div></div>
-    <div id="confirmModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center"><div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm"><div class="flex items-start"><div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10"><i data-lucide="alert-triangle" class="h-6 w-6 text-red-600"></i></div><div class="ml-4 text-left"><h3 id="confirmModalTitle" class="text-lg font-medium"></h3><p id="confirmModalMessage" class="mt-2 text-sm text-slate-600"></p></div></div><div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse"><button id="confirmModalConfirmButton" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 sm:ml-3 sm:w-auto sm:text-sm">Confirmar</button><button id="confirmModalCancelButton" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm">Cancelar</button></div></div></div>
-    <div id="progressModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center"><div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md"><h3 id="progressModalTitle" class="text-lg font-medium text-center"></h3><div class="mt-4 space-y-2"><p id="progressFileName" class="text-sm text-center text-slate-600 truncate"></p><div class="w-full bg-gray-200 rounded-full h-2.5"><div id="progressBar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div></div><p id="progressCounter" class="text-sm text-center font-medium text-slate-800"></p></div><div id="progressErrorContainer" class="mt-4 max-h-32 overflow-y-auto"></div><div class="mt-4 flex justify-end hidden" id="progressCloseBtnContainer"><button id="progressCloseBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Fechar</button></div></div></div>
-
+    <div id="alertModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center">...</div>
+    <div id="confirmModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center">...</div>
+    <div id="progressModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center">...</div>
+    
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-     <script type="module" src="js/main.js"></script>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
