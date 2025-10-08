@@ -11,6 +11,11 @@ import {
     createLancamentosTableRowsHTML, createLancamentoDetailHTML, showAlertModal,
     showConfirmModal, closeModal, handleConfirm, renderPaginationControls, renderDashboardChart,
     renderNfPieChart, createVariaveisViewHTML, createVariaveisTableRowsHTML
+    import {
+    // ...
+    createVariaveisViewHTML, createVariaveisTableRowsHTML,
+    createClientesViewHTML, createClientesTableRowsHTML 
+    
 } from './ui.js';
 
 // --- Estado da Aplicação ---
@@ -25,6 +30,8 @@ let selectedMonthFilter = new Date().getMonth();
 let selectedYearFilter = new Date().getFullYear();
 let searchTerm = '';
 let sortState = { key: 'dataEmissao', direction: 'desc' };
+let clientesUnsubscribe = null; 
+let allClientesData = []; 
 
 const hoje = new Date();
 const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
@@ -51,6 +58,7 @@ onAuthStateChanged(auth, user => {
         appView.style.display = 'block';
         if (!lancamentosUnsubscribe) attachLancamentosListener();
         if (!variaveisUnsubscribe) attachVariaveisListener();
+        if (!clientesUnsubscribe) attachClientesListener(); // NOVO
     } else {
         currentUser = null;
         appView.style.display = 'none';
@@ -59,6 +67,7 @@ onAuthStateChanged(auth, user => {
         loginContainer.classList.remove('hidden');
         if (lancamentosUnsubscribe) { lancamentosUnsubscribe(); lancamentosUnsubscribe = null; }
         if (variaveisUnsubscribe) { variaveisUnsubscribe(); variaveisUnsubscribe = null; }
+        if (clientesUnsubscribe) { clientesUnsubscribe(); clientesUnsubscribe = null; }
     }
 });
 
@@ -75,6 +84,8 @@ loginButton.addEventListener('click', () => {
 logoutButton.addEventListener('click', () => signOut(auth));
 
 // --- Lógica de Dados (Firestore) ---
+function attachLancamentosListener() { /* ... */ }
+function attachVariaveisListener() { /* ... */ }
 function attachLancamentosListener() {
     const q = query(collection(db, 'lancamentos'));
     lancamentosUnsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -91,6 +102,17 @@ function attachVariaveisListener() {
         const currentViewEl = document.querySelector('.view[style*="block"]');
         if (currentViewEl) showView(currentViewEl.id);
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as variáveis."));
+    function attachClientesListener() {
+    const q = query(collection(db, 'clientes'));
+    clientesUnsubscribe = onSnapshot(q, (querySnapshot) => {
+        allClientesData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
+        const currentViewEl = document.querySelector('.view[style*="block"]');
+        if (currentViewEl && currentViewEl.id === 'clientesView') {
+            showView('clientesView');
+        }
+    });
+        
+
 }
 
 // --- Lógica de Navegação e Renderização ---
