@@ -82,18 +82,6 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-loginForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-
-    signInWithEmailAndPassword(auth, email, password)
-        .catch(error => {
-            console.error("Erro de login:", error);
-            showAlertModal('Erro de Login', 'E-mail ou senha inválidos. Verifique os dados e tente novamente.');
-        });
-});
-
 logoutButton.addEventListener('click', () => signOut(auth));
 
 // --- Lógica de Dados (Firestore) ---
@@ -114,9 +102,7 @@ function attachVariaveisListener() {
         allVariaveisData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
         if (currentViewEl && currentViewEl.id === 'variaveisView') {
-            renderView('variaveisView', currentUserProfile); // Re-render view to apply permissions
-            const tableBody = document.getElementById('variaveisTableBody');
-            if (tableBody) tableBody.innerHTML = createVariaveisTableRowsHTML(allVariaveisData, currentUserProfile);
+            renderView('variaveisView');
         }
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as variáveis."));
 }
@@ -127,8 +113,7 @@ function attachClientesListener() {
         allClientesData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
         if (currentViewEl && currentViewEl.id === 'clientesView') {
-            const tableBody = document.getElementById('clientesTableBody');
-            if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData, currentUserProfile);
+            renderView('clientesView');
         }
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os clientes."));
 }
@@ -138,8 +123,11 @@ function attachNotasCompraListener() {
     notasCompraUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allNotasCompraData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
+        const currentForm = currentViewEl ? currentViewEl.querySelector('form') : null;
+        const dataId = currentForm ? currentForm.dataset.id : null;
+        
         if (currentViewEl && (currentViewEl.id === 'notasFiscaisView' || currentViewEl.id === 'lancamentoDetailView')) {
-             showView(currentViewEl.id, currentViewEl.querySelector('form')?.dataset.id);
+             showView(currentViewEl.id, dataId);
         }
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as notas de compra."));
 }
@@ -147,42 +135,25 @@ function attachNotasCompraListener() {
 // --- Lógica de Navegação e Renderização ---
 async function showView(viewId, dataId = null) {
     if (!currentUserProfile) return;
-
     if (viewId === 'variaveisView' && currentUserProfile.funcao === 'padrao') {
         showAlertModal('Acesso Negado', 'Você não tem permissão para acessar esta área.');
         viewId = 'dashboardView';
     }
-
     allViews.forEach(v => v.style.display = 'none');
     const viewContainer = document.getElementById(viewId);
     if (viewContainer) viewContainer.style.display = 'block';
 
     if (viewId === 'dashboardView') {
-        const endDateFinal = new Date(dashboardEndDate);
-        endDateFinal.setHours(23, 59, 59, 999);
-        const dashboardLancamentos = allLancamentosData.filter(l => l.dataEmissao?.toDate() >= dashboardStartDate && l.dataEmissao?.toDate() <= endDateFinal);
-        const dashboardVariaveis = allVariaveisData.filter(v => v.data?.toDate() >= dashboardStartDate && v.data?.toDate() <= endDateFinal);
-        const totalVariaveis = dashboardVariaveis.reduce((sum, v) => sum + v.valor, 0);
-        renderView(viewId, { dashboardLancamentos, totalVariaveis, startDate: dashboardStartDate, endDate: dashboardEndDate });
-        renderDashboardChart(allLancamentosData);
-        renderNfPieChart(dashboardLancamentos);
-        document.querySelectorAll('.dashboard-value').forEach(el => animateCountUp(el, parseFloat(el.dataset.value)));
+        renderView(viewId);
     } else if (viewId === 'variaveisView') {
         renderView(viewId);
-        const tableBody = document.getElementById('variaveisTableBody');
-        if (tableBody) tableBody.innerHTML = createVariaveisTableRowsHTML(allVariaveisData, currentUserProfile);
     } else if (viewId === 'clientesView') {
         renderView(viewId);
-        const tableBody = document.getElementById('clientesTableBody');
-        if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData, currentUserProfile);
     } else if (viewId === 'notasFiscaisView') {
-        renderView(viewId, { lancamentos: allLancamentosData });
-        const tableBody = document.getElementById('notasCompraTableBody');
-        if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(allNotasCompraData, allLancamentosData, currentUserProfile);
+        renderView(viewId);
         if (currentUserProfile.funcao !== 'leitura') document.getElementById('addItemBtn')?.click();
     } else if (viewId === 'lancamentoDetailView' && dataId) {
-        viewContainer.innerHTML = `<div class="flex items-center justify-center h-96"><div class="loader"></div></div>`;
-        lucide.createIcons();
+        renderView(viewId, { isLoading: true });
         const docRef = doc(db, "lancamentos", dataId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
@@ -221,40 +192,59 @@ function renderView(viewId, data) {
     const viewContainer = document.getElementById(viewId);
     if (!viewContainer) return;
     let html = '';
+    
+    if (data?.isLoading) {
+        viewContainer.innerHTML = `<div class="flex items-center justify-center h-96"><div class="loader"></div></div>`;
+        lucide.createIcons();
+        return;
+    }
+
     switch (viewId) {
-        case 'dashboardView': html = createDashboardHTML(data.dashboardLancamentos, data.totalVariaveis, data.startDate, data.endDate, currentUserProfile); break;
-        case 'variaveisView': html = createVariaveisViewHTML(currentUserProfile); break;
-        case 'clientesView': html = createClientesViewHTML(currentUserProfile); break;
-        case 'lancamentosListView': html = createLancamentosListHTML(currentUserProfile); break;
-        case 'lancamentoDetailView': html = createLancamentoDetailHTML(data, currentUserProfile); break;
-        case 'notasFiscaisView': html = createNotasFiscaisViewHTML(data.lancamentos, currentUserProfile); break;
-        case 'clienteDetailView': html = createClienteDetailHTML(data, currentUserProfile); break;
+        case 'dashboardView':
+            const endDateFinal = new Date(dashboardEndDate);
+            endDateFinal.setHours(23, 59, 59, 999);
+            const dashboardLancamentos = allLancamentosData.filter(l => l.dataEmissao?.toDate() >= dashboardStartDate && l.dataEmissao?.toDate() <= endDateFinal);
+            const dashboardVariaveis = allVariaveisData.filter(v => v.data?.toDate() >= dashboardStartDate && v.data?.toDate() <= endDateFinal);
+            const totalVariaveis = dashboardVariaveis.reduce((sum, v) => sum + v.valor, 0);
+            html = createDashboardHTML(dashboardLancamentos, totalVariaveis, startDate, endDate, currentUserProfile);
+            break;
+        case 'variaveisView':
+            html = createVariaveisViewHTML(currentUserProfile);
+            break;
+        case 'clientesView':
+            html = createClientesViewHTML(currentUserProfile);
+            break;
+        case 'lancamentosListView':
+            html = createLancamentosListHTML(currentUserProfile);
+            break;
+        case 'lancamentoDetailView':
+            html = createLancamentoDetailHTML(data, currentUserProfile);
+            break;
+        case 'notasFiscaisView':
+            html = createNotasFiscaisViewHTML(allLancamentosData, currentUserProfile);
+            break;
+        case 'clienteDetailView':
+            html = createClienteDetailHTML(data, currentUserProfile);
+            break;
     }
     viewContainer.innerHTML = html;
     lucide.createIcons();
 }
 
+// --- Funções de Componentes (Gráficos, etc.) ---
+function renderDashboardComponents() {
+    const endDateFinal = new Date(dashboardEndDate);
+    endDateFinal.setHours(23, 59, 59, 999);
+    const dashboardLancamentos = allLancamentosData.filter(l => l.dataEmissao?.toDate() >= dashboardStartDate && l.dataEmissao?.toDate() <= endDateFinal);
+    
+    renderDashboardChart(allLancamentosData);
+    renderNfPieChart(dashboardLancamentos);
+    document.querySelectorAll('.dashboard-value').forEach(el => animateCountUp(el, parseFloat(el.dataset.value)));
+}
+
 // --- Lógica de Filtros, Ordenação e Paginação ---
 function getFilteredData() { /* ... */ }
-
-function applyFilters() {
-    const tableBody = document.getElementById('lancamentosTableBody');
-    if (!tableBody) return;
-    const filteredData = getFilteredData();
-    const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
-    currentPage = Math.min(currentPage, totalPages) || 1;
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const end = start + ITEMS_PER_PAGE;
-    const paginatedData = filteredData.slice(start, end);
-    tableBody.innerHTML = createLancamentosTableRowsHTML(paginatedData, currentUserProfile);
-    renderPaginationControls(currentPage, filteredData.length, totalPages, (direction) => {
-        if (direction === 'prev' && currentPage > 1) currentPage--;
-        if (direction === 'next' && currentPage < totalPages) currentPage++;
-        applyFilters();
-    });
-    lucide.createIcons();
-    updateSortUI();
-}
+function applyFilters() { /* ... */ }
 function populateFiltersAndApply() { /* ... */ }
 function updateSortUI() { /* ... */ }
 
@@ -264,30 +254,48 @@ function generateCsvReport() { /* ... */ }
 function generateBackupFile() { /* ... */ }
 async function handleRestoreFile(file) { /* ... */ }
 
-
 // --- Event Listeners Globais ---
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('alertModalCloseButton').addEventListener('click', () => closeModal('alertModal'));
-    document.getElementById('confirmModalCancelButton').addEventListener('click', () => closeModal('confirmModal'));
-    document.getElementById('confirmModalConfirmButton').addEventListener('click', handleConfirm);
+    const loginForm = document.getElementById('loginForm');
+    if(loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const loginButton = document.getElementById('loginButton');
+            loginButton.disabled = true;
+            loginButton.textContent = 'Entrando...';
+        
+            signInWithEmailAndPassword(auth, email, password)
+                .catch(error => {
+                    showAlertModal('Erro de Login', 'E-mail ou senha inválidos.');
+                })
+                .finally(() => {
+                    loginButton.disabled = false;
+                    loginButton.textContent = 'Entrar';
+                });
+        });
+    }
+
+    document.getElementById('alertModalCloseButton')?.addEventListener('click', () => closeModal('alertModal'));
+    document.getElementById('confirmModalCancelButton')?.addEventListener('click', () => closeModal('confirmModal'));
+    document.getElementById('confirmModalConfirmButton')?.addEventListener('click', handleConfirm);
 });
 
 appView.addEventListener('click', async (e) => {
     if (!currentUserProfile) return;
     const isReadOnly = currentUserProfile.funcao === 'leitura';
-    
-    // Guarda de Proteção para Ações de Escrita
     const actionElement = e.target.closest('button, .faturado-toggle');
-    const isAllowedForReadOnly = e.target.closest('.nav-link, .view-details, .back-to-list, .back-to-list-clientes, #exportPdfBtn, #exportCsvBtn, .sort-btn');
+    const isAllowedForReadOnly = e.target.closest('.nav-link, .view-details, .back-to-list, .back-to-list-clientes, #exportPdfBtn, #exportCsvBtn, .sort-btn, #dashboardFilterBtn');
+
     if (isReadOnly && actionElement && !isAllowedForReadOnly) {
         e.preventDefault();
         e.stopPropagation();
         showAlertModal('Acesso Negado', 'Você tem permissão apenas para visualização.');
         return;
     }
-
+    
     const { target } = e;
-
     if (target.closest('.nav-link')) { e.preventDefault(); showView(target.closest('.nav-link').dataset.view); }
     else if (target.closest('.sort-btn')) { 
         const key = target.closest('.sort-btn').dataset.key;
@@ -316,7 +324,7 @@ appView.addEventListener('click', async (e) => {
             formContainer.style.maxHeight = null;
             setTimeout(() => { if (formContainer) formContainer.innerHTML = ''; }, 500);
         } else {
-            formContainer.innerHTML = createNovoLancamentoFormHTML();
+            formContainer.innerHTML = createNovoLancamentoFormHTML(currentUserProfile);
             const clientList = document.getElementById('client-list');
             if (clientList) clientList.innerHTML = allClientesData.map(c => `<option value="${c.nome}"></option>`).join('');
             document.getElementById('newDataEmissao').valueAsDate = new Date();
@@ -374,18 +382,7 @@ appView.addEventListener('click', async (e) => {
     else if (target.id === 'addItemBtn') {
         const container = document.getElementById('itens-container');
         if (!container) return;
-        const newItemHTML = `
-            <div class="item-row grid grid-cols-12 gap-2 items-center">
-                <div class="col-span-8">
-                    <input type="text" placeholder="Descrição do item" class="item-descricao mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-                </div>
-                <div class="col-span-3">
-                    <input type="number" step="0.01" placeholder="Valor" class="item-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-                </div>
-                <div class="col-span-1 text-right">
-                    <button type="button" class="remove-item-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                </div>
-            </div>`;
+        const newItemHTML = `<div class="item-row grid grid-cols-12 gap-2 items-center"><div class="col-span-8"><input type="text" placeholder="Descrição do item" class="item-descricao mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div><div class="col-span-3"><input type="number" step="0.01" placeholder="Valor" class="item-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div><div class="col-span-1 text-right"><button type="button" class="remove-item-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div>`;
         container.insertAdjacentHTML('beforeend', newItemHTML);
         lucide.createIcons();
     } 
