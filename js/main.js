@@ -57,7 +57,7 @@ onAuthStateChanged(auth, user => {
         if (!lancamentosUnsubscribe) attachLancamentosListener();
         if (!variaveisUnsubscribe) attachVariaveisListener();
         if (!clientesUnsubscribe) attachClientesListener();
-        if (!notasCompraUnsubscribe) attachNotasCompraListener(); // Adicionado aqui
+        if (!notasCompraUnsubscribe) attachNotasCompraListener();
         showView('dashboardView');
     } else {
         currentUser = null;
@@ -68,7 +68,7 @@ onAuthStateChanged(auth, user => {
         if (lancamentosUnsubscribe) { lancamentosUnsubscribe(); lancamentosUnsubscribe = null; }
         if (variaveisUnsubscribe) { variaveisUnsubscribe(); variaveisUnsubscribe = null; }
         if (clientesUnsubscribe) { clientesUnsubscribe(); clientesUnsubscribe = null; }
-        if (notasCompraUnsubscribe) { notasCompraUnsubscribe(); notasCompraUnsubscribe = null; } // Adicionado aqui
+        if (notasCompraUnsubscribe) { notasCompraUnsubscribe(); notasCompraUnsubscribe = null; }
     }
 });
 
@@ -158,7 +158,7 @@ async function showView(viewId, dataId = null) {
     } else if (viewId === 'notasFiscaisView') {
         renderView(viewId, allLancamentosData);
         const tableBody = document.getElementById('notasCompraTableBody');
-        if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(allNotasCompraData);
+        if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(allNotasCompraData, allLancamentosData);
         document.getElementById('addItemBtn')?.click();
     } else if (viewId === 'lancamentoDetailView' && dataId) {
         viewContainer.innerHTML = `<div class="flex items-center justify-center h-96"><div class="loader"></div></div>`;
@@ -166,7 +166,9 @@ async function showView(viewId, dataId = null) {
         const docRef = doc(db, "lancamentos", dataId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-            renderView(viewId, { firestoreId: docSnap.id, ...docSnap.data() });
+            const lancamento = { firestoreId: docSnap.id, ...docSnap.data() };
+            const custosDaOs = allNotasCompraData.filter(nota => nota.osId === lancamento.os);
+            renderView(viewId, { lancamento, custosDaOs });
         } else {
             showAlertModal("Erro", "Lançamento não encontrado.");
             showView('lancamentosListView');
@@ -227,7 +229,7 @@ function getFilteredData() {
 
 function applyFilters() {
     const tableBody = document.getElementById('lancamentosTableBody');
-    if(!tableBody) return;
+    if (!tableBody) return;
 
     const filteredData = getFilteredData();
     const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
@@ -301,13 +303,15 @@ function updateSortUI() {
     lucide.createIcons();
 }
 
-// --- Lógica de Relatórios e Backup ---
-// ... (O código de generatePrintReport, generateCsvReport, generateBackupFile, handleRestoreFile não precisa de alterações)
+// --- Lógica de Relatórios e Backup (Sem alterações) ---
+// function generatePrintReport() { ... }
+// function generateCsvReport() { ... }
+// function generateBackupFile() { ... }
+// function handleRestoreFile() { ... }
 
 
 // --- Event Listeners Globais ---
 document.addEventListener('DOMContentLoaded', () => {
-    // A chamada inicial do showView foi movida para o onAuthStateChanged para garantir que os dados já estejam carregados
     document.getElementById('alertModalCloseButton').addEventListener('click', () => closeModal('alertModal'));
     document.getElementById('confirmModalCancelButton').addEventListener('click', () => closeModal('confirmModal'));
     document.getElementById('confirmModalConfirmButton').addEventListener('click', handleConfirm);
@@ -316,11 +320,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 appView.addEventListener('click', async (e) => {
     const { target } = e;
+
     if (target.closest('.nav-link')) { e.preventDefault(); showView(target.closest('.nav-link').dataset.view); }
-    else if (target.closest('.sort-btn')) { /* ... */ }
-    else if (target.closest('#reset-sort')) { /* ... */ }
-    else if (target.closest('.view-details')) { /* ... */ }
-    else if (target.closest('.back-to-list')) { /* ... */ }
+    else if (target.closest('.sort-btn')) { 
+        const key = target.closest('.sort-btn').dataset.key;
+        sortState.direction = (sortState.key === key && sortState.direction === 'asc') ? 'desc' : 'asc';
+        sortState.key = key;
+        applyFilters();
+    }
+    else if (target.closest('#reset-sort')) { sortState = { key: 'dataEmissao', direction: 'desc' }; applyFilters(); }
+    else if (target.closest('.view-details')) { showView('lancamentoDetailView', target.closest('.view-details').dataset.id); }
+    else if (target.closest('.back-to-list')) { showView('lancamentosListView'); }
     else if (target.id === 'toggleFormBtn') { /* ... */ }
     else if (target.id === 'cancelNewLancamento') { /* ... */ }
     else if (target.id === 'analiseIaBtn') { /* ... */ }
@@ -334,7 +344,14 @@ appView.addEventListener('click', async (e) => {
     else if (target.closest('.delete-variavel-btn')) { /* ... */ }
     else if (target.closest('.delete-cliente-btn')) { /* ... */ }
     
-    // Eventos da nova tela
+    // CORREÇÃO AQUI: O .link-to-os agora é um bloco 'else if' independente
+    else if (target.closest('.link-to-os')) {
+        const lancamentoId = target.closest('.link-to-os').dataset.lancamentoId;
+        if (lancamentoId) {
+            showView('lancamentoDetailView', lancamentoId);
+        }
+    }
+    
     else if (target.id === 'addItemBtn') {
         const container = document.getElementById('itens-container');
         const newItemHTML = `
@@ -352,7 +369,8 @@ appView.addEventListener('click', async (e) => {
         `;
         container.insertAdjacentHTML('beforeend', newItemHTML);
         lucide.createIcons();
-    } else if (target.closest('.remove-item-btn')) {
+    } 
+    else if (target.closest('.remove-item-btn')) {
         target.closest('.item-row').remove();
     }
 });
@@ -361,14 +379,13 @@ appView.addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
     const submitButton = form.querySelector('button[type="submit"]');
-    if(submitButton) submitButton.disabled = true;
+    if (submitButton) submitButton.disabled = true;
 
     try {
-        if (form.id === 'addVariavelForm') { /* ... */ } 
+        if (form.id === 'addVariavelForm') { /* ... */ }
         else if (form.id === 'addClienteForm') { /* ... */ }
         else if (form.id === 'novoLancamentoForm' || form.id === 'editLancamentoForm') { /* ... */ }
-        
-        // Lógica de submit do novo formulário
+
         else if (form.id === 'addNotaCompraForm') {
             const itens = [];
             let valorTotal = 0;
@@ -383,7 +400,8 @@ appView.addEventListener('submit', async (e) => {
 
             if (itens.length === 0) {
                 showAlertModal('Erro', 'Você precisa adicionar pelo menos um item válido.');
-                return; // Não reabilita o botão
+                // Retornamos aqui, mas a reabilitação do botão é feita no 'finally'
+                return;
             }
 
             const data = new Date(form.querySelector('#newNotaData').value + 'T12:00:00Z');
