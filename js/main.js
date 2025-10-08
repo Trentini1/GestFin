@@ -5,11 +5,12 @@ import { collection, doc, addDoc, getDoc, deleteDoc, onSnapshot, query, updateDo
 // Módulos locais
 import { auth, db } from './firebase-config.js';
 import { extractPdfImage, callGeminiForAnalysis } from './api.js';
-import { getGiroTotal, animateCountUp } from './utils.js';
+import { getGiroTotal, animateCountUp, formatCurrency } from './utils.js';
 import {
     createDashboardHTML, createLancamentosListHTML, createNovoLancamentoFormHTML,
     createLancamentosTableRowsHTML, createLancamentoDetailHTML, showAlertModal,
-    showConfirmModal, closeModal, handleConfirm, renderPaginationControls, renderDashboardChart
+    showConfirmModal, closeModal, handleConfirm, renderPaginationControls, renderDashboardChart,
+    renderNfPieChart
 } from './ui.js';
 
 // --- Estado da Aplicação ---
@@ -21,6 +22,7 @@ const ITEMS_PER_PAGE = 15;
 let selectedMonthFilter = new Date().getMonth();
 let selectedYearFilter = new Date().getFullYear();
 let searchTerm = '';
+let sortState = { key: 'dataEmissao', direction: 'desc' };
 
 // --- Seletores do DOM ---
 const loadingView = document.getElementById('loadingView');
@@ -85,7 +87,9 @@ function attachLancamentosListener() {
 async function showView(viewId, dataId = null) {
     allViews.forEach(v => v.style.display = 'none');
     const viewContainer = document.getElementById(viewId);
-    viewContainer.style.display = 'block';
+    if (viewContainer) {
+        viewContainer.style.display = 'block';
+    }
 
     if (viewId === 'lancamentoDetailView' && dataId) {
         viewContainer.innerHTML = `<div class="flex items-center justify-center h-96"><div class="loader"></div></div>`;
@@ -108,6 +112,7 @@ async function showView(viewId, dataId = null) {
         populateFiltersAndApply();
     } else if (viewId === 'dashboardView') {
         renderDashboardChart(allLancamentosData);
+        renderNfPieChart(allLancamentosData);
         
         const giroEl = document.getElementById('giro-total-mes');
         const faturamentoEl = document.getElementById('faturamento-mes');
@@ -129,6 +134,7 @@ async function showView(viewId, dataId = null) {
 
 function renderView(viewId, data) {
     const viewContainer = document.getElementById(viewId);
+    if (!viewContainer) return;
     let html = '';
     switch (viewId) {
         case 'dashboardView': html = createDashboardHTML(data); break;
@@ -143,7 +149,7 @@ function renderView(viewId, data) {
 function getFilteredData() {
     const lowerCaseSearchTerm = searchTerm.toLowerCase();
 
-    return allLancamentosData.filter(l => {
+    const filtered = allLancamentosData.filter(l => {
         const date = l.dataEmissao?.toDate();
         if (!date) return false;
 
@@ -156,7 +162,18 @@ function getFilteredData() {
                               (l.os && l.os.toLowerCase().includes(lowerCaseSearchTerm));
         
         return monthMatch && yearMatch && searchMatch;
-    }).sort((a, b) => b.dataEmissao.toDate() - a.dataEmissao.toDate());
+    });
+    
+    filtered.sort((a, b) => {
+        const valA = sortState.key === 'dataEmissao' ? a.dataEmissao?.toDate()?.getTime() : (a[sortState.key] || '').toLowerCase();
+        const valB = sortState.key === 'dataEmissao' ? b.dataEmissao?.toDate()?.getTime() : (b[sortState.key] || '').toLowerCase();
+
+        if (valA < valB) return sortState.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return sortState.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    return filtered;
 }
 
 function applyFilters() {
@@ -178,6 +195,7 @@ function applyFilters() {
         applyFilters();
     });
     lucide.createIcons();
+    updateSortUI();
 }
 
 function populateFiltersAndApply() {
@@ -216,39 +234,38 @@ function populateFiltersAndApply() {
     }
 }
 
-// --- Lógica de Relatórios ---
-function generateCsvReport() {
-    const filtered = getFilteredData();
-      if (filtered.length === 0) {
-        showAlertModal('Aviso', 'Não há dados para exportar com os filtros selecionados.');
-        return;
-    }
-
-    const head = ['Data Emissao', 'Cliente', 'NF', 'OS/PC', 'Motor', 'Valor Total', 'Comissao', 'Faturado', 'Data Faturamento'];
-    const body = filtered.map(l => [
-        l.dataEmissao?.toDate().toLocaleDateString('pt-BR'),
-        `"${(l.cliente || '').replace(/"/g, '""')}"`,
-        l.numeroNf || '-',
-        `"${(l.os || '').replace(/"/g, '""')}"`,
-        `"${(l.descricao || '').replace(/"/g, '""')}"`,
-        getGiroTotal(l).toFixed(2).replace('.',','),
-        (l.comissao || 0).toFixed(2).replace('.',','),
-        l.faturado ? 'Sim' : 'Nao',
-        l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : ''
-    ]);
-
-    const csvContent = "data:text/csv;charset=utf-8," 
-        + head.join(';') + '\n' 
-        + body.map(e => e.join(';')).join('\n');
+function updateSortUI() {
+    const container = document.getElementById('sort-reset-container');
+    if (!container) return;
     
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "relatorio_lancamentos.csv");
-    document.body.appendChild(link); 
-    link.click();
-    document.body.removeChild(link);
-    function generatePrintReport() {
+    document.querySelectorAll('.sort-btn i').forEach(icon => {
+        icon.setAttribute('data-lucide', 'arrow-down-up');
+    });
+
+    if (sortState.key !== 'dataEmissao' || sortState.direction !== 'desc') {
+        const activeBtn = document.querySelector(`.sort-btn[data-key="${sortState.key}"]`);
+        if (activeBtn) {
+            const icon = activeBtn.querySelector('i');
+            icon.setAttribute('data-lucide', sortState.direction === 'asc' ? 'arrow-up' : 'arrow-down');
+        }
+        
+        container.innerHTML = `
+            <span class="text-sm text-slate-600 mr-2">Ordenado por: ${sortState.key}</span>
+            <button id="reset-sort" class="text-slate-500 hover:text-red-600 p-1 rounded-full">
+                <i data-lucide="x" class="h-4 w-4"></i>
+            </button>
+        `;
+        container.classList.remove('hidden');
+    } else {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+    }
+    lucide.createIcons();
+}
+
+
+// --- Lógica de Relatórios ---
+function generatePrintReport() {
     const filtered = getFilteredData();
     if (filtered.length === 0) {
         showAlertModal('Aviso', 'Não há dados para exportar com os filtros selecionados.');
@@ -264,70 +281,54 @@ function generateCsvReport() {
         <head>
             <title>${title}</title>
             <style>
-                body { font-family: sans-serif; margin: 1cm; color: #333; }
-                h1 { font-size: 18px; border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-bottom: 20px; }
-                table { width: 100%; border-collapse: collapse; font-size: 10px; }
-                th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
-                th { background-color: #f2f2f2; }
-                .summary { margin-top: 20px; border-top: 2px solid #333; padding-top: 10px; font-size: 12px; }
-                h2 { font-size: 16px; }
-                @media print { body { -webkit-print-color-adjust: exact; } }
+                body { font-family: sans-serif; margin: 1cm; color: #333; } h1 { font-size: 18px; border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-bottom: 20px; } table { width: 100%; border-collapse: collapse; font-size: 10px; } th, td { border: 1px solid #ddd; padding: 6px; text-align: left; } th { background-color: #f2f2f2; } .summary { margin-top: 20px; border-top: 2px solid #333; padding-top: 10px; font-size: 12px; } h2 { font-size: 16px; } @media print { body { -webkit-print-color-adjust: exact; } }
             </style>
         </head>
-        <body>
-            <h1>${title}</h1>
+        <body><h1>${title}</h1>
     `;
 
     const totalGiro = filtered.reduce((sum, l) => sum + getGiroTotal(l), 0);
     const totalComissao = filtered.reduce((sum, l) => sum + (l.comissao || 0), 0);
 
-    reportHTML += `
-        <table>
-            <thead>
-                <tr>
-                    <th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Motor</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
+    reportHTML += `<table><thead><tr><th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Motor</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th></tr></thead><tbody>`;
 
-    filtered.forEach(l => { // Usando o filteredData já ordenado
+    filtered.forEach(l => {
         reportHTML += `
             <tr>
-                <td>${l.dataEmissao?.toDate().toLocaleDateString('pt-BR')}</td>
-                <td>${l.cliente || '-'}</td>
-                <td>${l.numeroNf || 'NT'}</td>
-                <td>${l.os || ''}</td>
-                <td>${l.descricao || '-'}</td>
-                <td>${formatCurrency(getGiroTotal(l))}</td>
-                <td>${formatCurrency(l.comissao)}</td>
-                <td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td>
-            </tr>
-        `;
+                <td>${l.dataEmissao?.toDate().toLocaleDateString('pt-BR')}</td><td>${l.cliente || '-'}</td><td>${l.numeroNf || 'NT'}</td><td>${l.os || ''}</td><td>${l.descricao || '-'}</td><td>${formatCurrency(getGiroTotal(l))}</td><td>${formatCurrency(l.comissao)}</td><td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td>
+            </tr>`;
     });
 
-    reportHTML += `
-            </tbody>
-        </table>
-        <div class="summary">
-            <h2>Resumo do Período</h2>
-            <p><strong>Total Lançado (Giro):</strong> ${formatCurrency(totalGiro)}</p>
-            <p><strong>Total em Comissões:</strong> ${formatCurrency(totalComissao)}</p>
-        </div>
-        <script>
-            window.onload = function() {
-                window.print();
-            }
-        <\/script>
-        </body>
-        </html>
-    `;
+    reportHTML += `</tbody></table><div class="summary"><h2>Resumo do Período</h2><p><strong>Total Lançado (Giro):</strong> ${formatCurrency(totalGiro)}</p><p><strong>Total em Comissões:</strong> ${formatCurrency(totalComissao)}</p></div><script>window.onload = function() { window.print(); }<\/script></body></html>`;
     
     const printWindow = window.open('', '', 'height=800,width=800');
     printWindow.document.write(reportHTML);
     printWindow.document.close();
 }
+
+function generateCsvReport() {
+    const filtered = getFilteredData();
+      if (filtered.length === 0) {
+        showAlertModal('Aviso', 'Não há dados para exportar com os filtros selecionados.');
+        return;
+    }
+
+    const head = ['Data Emissao', 'Cliente', 'NF', 'OS/PC', 'Motor', 'Valor Total', 'Comissao', 'Faturado', 'Data Faturamento'];
+    const body = filtered.map(l => [
+        l.dataEmissao?.toDate().toLocaleDateString('pt-BR'), `"${(l.cliente || '').replace(/"/g, '""')}"`, l.numeroNf || '-', `"${(l.os || '').replace(/"/g, '""')}"`, `"${(l.descricao || '').replace(/"/g, '""')}"`, getGiroTotal(l).toFixed(2).replace('.',','), (l.comissao || 0).toFixed(2).replace('.',','), l.faturado ? 'Sim' : 'Nao', l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : ''
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + head.join(';') + '\n' + body.map(e => e.join(';')).join('\n');
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "relatorio_lancamentos.csv");
+    document.body.appendChild(link); 
+    link.click();
+    document.body.removeChild(link);
 }
+
 
 // --- Event Listeners Globais ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -336,11 +337,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
 appView.addEventListener('click', async (e) => {
     const { target } = e;
+    
     const navLink = target.closest('.nav-link');
     if (navLink) {
         e.preventDefault();
         showView(navLink.dataset.view);
         return;
+    }
+
+    const sortBtn = target.closest('.sort-btn');
+    if (sortBtn) {
+        const key = sortBtn.dataset.key;
+        if (sortState.key === key) {
+            sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortState.key = key;
+            sortState.direction = 'asc';
+        }
+        applyFilters();
+    }
+
+    const resetSortBtn = target.closest('#reset-sort');
+    if (resetSortBtn) {
+        sortState = { key: 'dataEmissao', direction: 'desc' };
+        applyFilters();
     }
 
     if (target.closest('.view-details')) showView('lancamentoDetailView', target.closest('.view-details').dataset.id);
@@ -379,8 +399,8 @@ appView.addEventListener('click', async (e) => {
             });
         }
     } 
-    else if (target.id === 'exportPdfBtn') showAlertModal('Info', 'Funcionalidade de relatório PDF a ser implementada.');
     else if (target.id === 'exportPdfBtn') generatePrintReport();
+    else if (target.id === 'exportCsvBtn') generateCsvReport();
 });
 
 appView.addEventListener('submit', async (e) => {
@@ -398,7 +418,7 @@ appView.addEventListener('submit', async (e) => {
             await addDoc(collection(db, "lancamentos"), {
                 dataEmissao: new Date(dateValue + 'T12:00:00Z'),
                 cliente: form.querySelector('#newCliente').value,
-                numeroNf: form.querySelector('#newNumeroNf').value,
+                numeroNf: form.querySelector('#newNumeroNf').value || 'NT',
                 os: form.querySelector('#newOs').value,
                 descricao: form.querySelector('#newDescricao').value,
                 valorTotal,
@@ -419,7 +439,7 @@ appView.addEventListener('submit', async (e) => {
             await updateDoc(doc(db, "lancamentos", form.dataset.id), {
                 dataEmissao: new Date(dateValue + 'T12:00:00Z'),
                 cliente: form.querySelector('#editCliente').value,
-                numeroNf: form.querySelector('#editNumeroNf').value,
+                numeroNf: form.querySelector('#editNumeroNf').value || 'NT',
                 os: form.querySelector('#editOs').value,
                 descricao: form.querySelector('#editDescricao').value,
                 valorTotal,
@@ -435,7 +455,7 @@ appView.addEventListener('submit', async (e) => {
     } catch (error) {
         showAlertModal("Erro", `Não foi possível salvar. Erro: ${error.message}`);
     } finally {
-        submitButton.disabled = false;
+        if (submitButton) submitButton.disabled = false;
     }
 });
 
@@ -461,7 +481,7 @@ appView.addEventListener('change', async (e) => {
                 await addDoc(collection(db, "lancamentos"), {
                     dataEmissao: new Date(data.dataEmissao + 'T12:00:00Z'),
                     cliente: data.cliente,
-                    numeroNf: data.numeroNf,
+                    numeroNf: data.numeroNf || 'NT',
                     os: os_pc,
                     descricao: data.observacoes,
                     valorTotal,
