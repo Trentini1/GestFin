@@ -4,33 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestão Financeira PRO</title>
-
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
-
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="bg-slate-100 text-slate-800">
 
-    <div id="loadingView" class="flex items-center justify-center min-h-screen bg-slate-200">
-        <div class="w-full max-w-md p-8 space-y-6 bg-white rounded-xl shadow-lg text-center">
-            <h1 class="text-3xl font-bold text-center text-indigo-600">Gestão PRO</h1>
-            <div id="loaderContainer" class="flex flex-col items-center justify-center space-y-4">
-                <div class="loader"></div>
-                <p class="text-slate-600">Conectando ao servidor...</p>
-            </div>
-            <div id="loginContainer" class="hidden">
-                <p class="text-slate-600 mb-4">Acesse o sistema para gerenciar seus lançamentos.</p>
-                <button id="loginButton" class="w-full py-3 font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">Acessar</button>
-                <p class="text-xs text-slate-500 mt-4">Usando autenticação anônima do Firebase.</p>
-            </div>
-        </div>
-    </div>
+    <div id="loadingView" class="flex items-center justify-center min-h-screen bg-slate-200"></div>
 
     <div id="appView" class="hidden">
         <header class="bg-white shadow-sm sticky top-0 z-40">
@@ -62,9 +45,9 @@
         </main>
     </div>
 
-    <div id="alertModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center">...</div>
-    <div id="confirmModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center">...</div>
-    <div id="progressModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center">...</div>
+    <div id="alertModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center"></div>
+    <div id="confirmModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center"></div>
+    <div id="progressModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center"></div>
     
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
