@@ -80,6 +80,77 @@ export const createLancamentosListHTML = (userProfile) => {
     </div>`;
 };
 
+// ***** INÍCIO DA CORREÇÃO *****
+// A função abaixo foi adicionada para corrigir o erro de importação.
+export const createNovoLancamentoFormHTML = (userProfile) => {
+    const showFinancials = userProfile.funcao !== 'padrao';
+    return `
+      <form id="novoLancamentoForm" class="p-6 bg-slate-100 border-t-2 border-b-2 border-slate-200 space-y-4">
+        <h3 class="text-xl font-semibold text-slate-800">Novo Lançamento Manual</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+                <label for="newDataEmissao" class="block text-sm font-medium text-slate-700">Data de Emissão</label>
+                <input type="date" id="newDataEmissao" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+            </div>
+            <div>
+                <label for="newCliente" class="block text-sm font-medium text-slate-700">Cliente</label>
+                <input list="client-list" id="newCliente" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+                <datalist id="client-list"></datalist>
+            </div>
+            <div>
+                <label for="newNumeroNf" class="block text-sm font-medium text-slate-700">Número NF</label>
+                <input type="text" id="newNumeroNf" placeholder="NT se não houver" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+            </div>
+            <div>
+                <label for="newOs" class="block text-sm font-medium text-slate-700">OS / PC</label>
+                <input type="text" id="newOs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="md:col-span-2">
+                <label for="newDescricao" class="block text-sm font-medium text-slate-700">Motor / Descrição do Serviço</label>
+                <input type="text" id="newDescricao" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+            </div>
+            <div>
+                <label for="newValorTotal" class="block text-sm font-medium text-slate-700">Valor Total</label>
+                <input type="number" step="0.01" id="newValorTotal" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+             <div class="md:col-span-2">
+                <label for="newObs" class="block text-sm font-medium text-slate-700">Observação</label>
+                <textarea id="newObs" rows="2" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></textarea>
+            </div>
+            ${showFinancials ? `
+            <div>
+                <label for="newTaxaComissao" class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label>
+                <input type="number" step="0.01" id="newTaxaComissao" value="${DEFAULT_COMISSION_RATE}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+            </div>
+            ` : ''}
+        </div>
+        
+        <div class="pt-4 border-t">
+            <h4 class="text-md font-medium text-slate-700">Impostos sobre a Venda (se houver)</h4>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+                <div><label class="block text-sm font-medium text-slate-700">ISS (%)</label><input type="number" step="0.01" id="newImpostoIss" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">PIS (%)</label><input type="number" step="0.01" id="newImpostoPis" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">COFINS (%)</label><input type="number" step="0.01" id="newImpostoCofins" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">ICMS (%)</label><input type="number" step="0.01" id="newImpostoIcms" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-4 border-t">
+          <button type="button" id="cancelNewLancamento" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Cancelar</button>
+          <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">Salvar Lançamento</button>
+        </div>
+      </form>
+    `;
+};
+// ***** FIM DA CORREÇÃO *****
+
+
 export const createLancamentosTableRowsHTML = (lancamentos, userProfile) => {
     const isReadOnly = userProfile.funcao === 'leitura';
     const colspan = userProfile.funcao === 'padrao' ? 7 : 8;
