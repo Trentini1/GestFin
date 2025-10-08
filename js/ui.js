@@ -144,12 +144,18 @@ export const createLancamentosTableRowsHTML = (lancamentos) => {
         </tr>`).join('');
 };
 
-export const createLancamentoDetailHTML = (lancamento) => {
+export const createLancamentoDetailHTML = (data) => {
+    const { lancamento, custosDaOs } = data;
+    
     const valorTotal = getGiroTotal(lancamento);
+    const totalCustos = custosDaOs.reduce((sum, nota) => sum + nota.valorTotal, 0);
+    const lucroBruto = valorTotal - totalCustos;
+
     return `
     <button class="back-to-list flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
     <form id="editLancamentoForm" data-id="${lancamento.firestoreId}" class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto space-y-6">
         <h2 class="text-2xl font-bold">Editar Lançamento</h2>
+        
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div><label class="block text-sm font-medium text-slate-700">Data Emissão</label><input type="date" id="editDataEmissao" value="${lancamento.dataEmissao.toDate().toISOString().split('T')[0]}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
             <div><label class="block text-sm font-medium text-slate-700">Cliente</label><input type="text" id="editCliente" value="${lancamento.cliente}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
@@ -164,11 +170,41 @@ export const createLancamentoDetailHTML = (lancamento) => {
             <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Observação</label><textarea id="editObs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">${lancamento.obs || ''}</textarea></div>
             <div><label class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label><input type="number" step="0.01" id="editTaxaComissao" value="${lancamento.taxaComissao || DEFAULT_COMISSION_RATE}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
         </div>
+
         <div class="flex justify-end pt-4 border-t">
             <button type="button" id="deleteLancamentoBtn" class="text-red-600 hover:underline mr-auto">Excluir Lançamento</button>
             <button type="submit" class="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button>
         </div>
-    </form>`;
+    </form>
+
+    <div class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto mt-8">
+        <h3 class="text-xl font-bold mb-4">Custos Vinculados a esta O.S.</h3>
+        ${custosDaOs.length > 0 ? `
+            <div class="space-y-4">
+                ${custosDaOs.map(nota => `
+                    <div class="border p-4 rounded-md bg-slate-50">
+                        <p class="font-semibold">NF de Compra: ${nota.numeroNf} <span class="font-normal text-slate-500">- ${nota.dataEmissao.toDate().toLocaleDateString('pt-BR')}</span></p>
+                        <ul class="list-disc list-inside mt-2 text-sm text-slate-600">
+                            ${nota.itens.map(item => `<li>${item.descricao}: <span class="font-medium">${formatCurrency(item.valor)}</span></li>`).join('')}
+                        </ul>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="mt-6 pt-4 border-t-2">
+                <div class="flex justify-between items-center text-lg">
+                    <span class="font-medium text-slate-600">Total de Custos:</span>
+                    <span class="font-bold text-red-600">${formatCurrency(totalCustos)}</span>
+                </div>
+                <div class="flex justify-between items-center text-lg mt-2">
+                    <span class="font-medium text-slate-600">Lucro Bruto (Valor Total - Custos):</span>
+                    <span class="font-bold text-green-700">${formatCurrency(lucroBruto)}</span>
+                </div>
+            </div>
+        ` : `
+            <p class="text-slate-500">Nenhuma nota fiscal de compra foi vinculada a esta O.S. ainda.</p>
+        `}
+    </div>
+    `;
 };
 
 export const createClientesViewHTML = () => `
@@ -260,19 +296,32 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
     </div>`;
 };
 
-export const createNotasCompraTableRowsHTML = (notas) => {
+export const createNotasCompraTableRowsHTML = (notas, lancamentos) => {
     if (!notas.length) return '<tr><td colspan="5" class="text-center py-10 text-slate-500">Nenhuma nota fiscal de compra encontrada.</td></tr>';
     
-    return notas.sort((a,b) => b.dataEmissao.toDate() - a.dataEmissao.toDate()).map(n => `
+    return notas.sort((a,b) => b.dataEmissao.toDate() - a.dataEmissao.toDate()).map(n => {
+        const lancamentoCorrespondente = lancamentos.find(l => l.os === n.osId);
+        const lancamentoId = lancamentoCorrespondente ? lancamentoCorrespondente.firestoreId : null;
+
+        return `
         <tr class="hover:bg-slate-50">
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${n.dataEmissao.toDate().toLocaleDateString('pt-BR')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${n.numeroNf}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${n.osId}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                ${lancamentoId ? `
+                    <button class="link-to-os text-indigo-600 hover:underline font-medium" data-lancamento-id="${lancamentoId}">
+                        ${n.osId}
+                    </button>
+                ` : `
+                    <span title="Não foi possível encontrar um lançamento com este número de O.S.">${n.osId}</span> 
+                `}
+            </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(n.valorTotal)}</td>
             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <button class="text-red-600 hover:text-red-900 delete-notacompra-btn" data-id="${n.firestoreId}">Excluir</button>
             </td>
-        </tr>`).join('');
+        </tr>`
+    }).join('');
 };
 
 // --- Funções de Modal (Adicionadas/Corrigidas) ---
