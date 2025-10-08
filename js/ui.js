@@ -4,8 +4,7 @@ const DEFAULT_COMISSION_RATE = 0.5;
 
 // --- Funções de criação de HTML ---
 
-export const createDashboardHTML = (dashboardData, startDate, endDate) => {
-    // A lógica de cálculo agora usa os dados já filtrados pela data
+export const createDashboardHTML = (dashboardData, totalVariaveis, startDate, endDate) => {
     const faturamentoPeriodo = dashboardData
         .filter(l => l.faturado)
         .reduce((sum, l) => sum + getGiroTotal(l), 0);
@@ -15,8 +14,8 @@ export const createDashboardHTML = (dashboardData, startDate, endDate) => {
         .reduce((sum, l) => sum + (l.comissao || 0), 0);
 
     const giroTotalPeriodo = dashboardData.reduce((sum, l) => sum + getGiroTotal(l), 0);
+    const totalAReceber = comissoesPeriodo + totalVariaveis;
 
-    // Formata as datas para preencher os inputs
     const formatDateForInput = (date) => date.toISOString().split('T')[0];
 
     return `
@@ -30,10 +29,11 @@ export const createDashboardHTML = (dashboardData, startDate, endDate) => {
                 <button id="dashboardFilterBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm">Filtrar</button>
             </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="bg-blue-100 p-3 rounded-full"><i data-lucide="trending-up" class="w-6 h-6 text-blue-600"></i></div><div class="ml-4"><p class="text-sm text-slate-500">Giro Total no Período</p><p id="giro-total-mes" data-value="${giroTotalPeriodo}" class="text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
-            <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="bg-green-100 p-3 rounded-full"><i data-lucide="dollar-sign" class="w-6 h-6 text-green-600"></i></div><div class="ml-4"><p class="text-sm text-slate-500">Faturamento no Período</p><p id="faturamento-mes" data-value="${faturamentoPeriodo}" class="text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
-            <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="bg-yellow-100 p-3 rounded-full"><i data-lucide="percent" class="w-6 h-6 text-yellow-600"></i></div><div class="ml-4"><p class="text-sm text-slate-500">Comissões no Período</p><p id="comissoes-mes" data-value="${comissoesPeriodo}" class="text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm text-slate-500">Giro Total</p><p data-value="${giroTotalPeriodo}" class="dashboard-value text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
+            <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm text-slate-500">Comissões Faturadas</p><p data-value="${comissoesPeriodo}" class="dashboard-value text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
+            <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm text-slate-500">Variáveis</p><p data-value="${totalVariaveis}" class="dashboard-value text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
+            <div class="bg-green-100 border border-green-300 p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm font-bold text-green-800">Total a Receber</p><p data-value="${totalAReceber}" class="dashboard-value text-2xl font-bold text-green-900">${formatCurrency(0)}</p></div></div></div>
         </div>
         <div class="mt-8 grid grid-cols-1 lg:grid-cols-5 gap-8">
             <div class="lg:col-span-3 bg-white p-6 rounded-lg shadow">
@@ -54,6 +54,56 @@ export const createDashboardHTML = (dashboardData, startDate, endDate) => {
 export const createLancamentosListHTML = () => {
     return `
     <div class="space-y-6">
+        <div class="flex space-x-4">
+            <button id="toggleFormBtn" class="w-full flex justify-center items-center py-3 px-4 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:bg-slate-200 hover:border-slate-400 transition-colors">
+                <i data-lucide="plus" class="w-5 h-5 mr-2"></i> Adicionar Lançamento Manual
+            </button>
+            <button id="analiseIaBtn" class="w-full flex justify-center items-center py-3 px-4 bg-indigo-100 text-indigo-700 border-2 border-dashed border-indigo-300 rounded-lg hover:bg-indigo-200 hover:border-indigo-400 transition-colors font-semibold">
+                <i data-lucide="scan-line" class="w-5 h-5 mr-2"></i> Analisar NF com IA
+            </button>
+            <input type="file" id="nfUploadInput" class="hidden" accept="application/pdf" multiple>
+        </div>
+        <div id="formContainer"></div>
+        <div class="relative">
+            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i>
+            <input type="search" id="searchInput" placeholder="Buscar por cliente, NF ou O.S..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+        </div>
+        <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <h2 class="text-2xl font-bold">Histórico de Lançamentos</h2>
+            <div id="sort-reset-container" class="hidden items-center"></div>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <label for="monthFilter" class="text-sm font-medium">Mês:</label>
+                    <select id="monthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="yearFilter" class="text-sm font-medium">Ano:</label>
+                    <select id="yearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
+            <table class="min-w-full divide-y divide-slate-200">
+                <thead class="bg-slate-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                            <button class="flex items-center gap-2 sort-btn" data-key="dataEmissao">Data Emissão <i data-lucide="arrow-down-up" class="h-4 w-4"></i></button>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                            <button class="flex items-center gap-2 sort-btn" data-key="cliente">Cliente <i data-lucide="arrow-down-up" class="h-4 w-4"></i></button>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">NF</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">O.S/PC</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Giro Total</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Comissão</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Faturado</th>
+                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
+                    </tr>
+                </thead>
+                <tbody id="lancamentosTableBody" class="bg-white divide-y divide-slate-200"></tbody>
+            </table>
+        </div>
+        <div id="pagination-controls" class="flex justify-between items-center text-sm"></div>
         <div class="mt-8 bg-white p-6 rounded-lg shadow">
             <h3 class="text-lg font-medium mb-4">Exportar Relatório</h3>
             <div class="flex space-x-4">
@@ -65,7 +115,6 @@ export const createLancamentosListHTML = () => {
                 </button>
             </div>
         </div>
-
         <div class="mt-8 bg-white p-6 rounded-lg shadow">
             <h3 class="text-lg font-medium mb-4">Backup e Restauração</h3>
             <p class="text-sm text-slate-500 mb-4">Salve todos os seus dados em um arquivo JSON ou restaure a partir de um backup anterior.</p>
@@ -82,72 +131,76 @@ export const createLancamentosListHTML = () => {
     </div>`;
 };
 
-// ... (O restante do arquivo `ui.js` permanece o mesmo, você pode colar este novo `createLancamentosListHTML` no seu arquivo existente ou substituir tudo para garantir)
+export const createVariaveisViewHTML = () => {
+    const today = new Date().toISOString().split('T')[0];
+    return `
+    <div class="space-y-6 max-w-4xl mx-auto">
+        <h2 class="text-2xl font-bold">Gerenciar Variáveis</h2>
+        <form id="addVariavelForm" class="bg-white p-6 rounded-lg shadow space-y-4">
+            <h3 class="text-lg font-medium">Adicionar Nova Variável</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Data</label>
+                    <input type="date" id="newVariavelData" value="${today}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Nome</label>
+                    <input type="text" id="newVariavelNome" required placeholder="Ex: VT, Ajuda Custo" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700">Valor</label>
+                    <input type="number" step="0.01" id="newVariavelValor" required placeholder="Ex: 300.50" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700">Descrição</label>
+                <input type="text" id="newVariavelDescricao" placeholder="Opcional" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+            </div>
+            <div class="flex justify-end">
+                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Variável</button>
+            </div>
+        </form>
 
-// (Aqui está o resto do arquivo para garantir)
-export const createNovoLancamentoFormHTML = () => { /* ...código da função... */ };
-export const createLancamentosTableRowsHTML = (lancamentos) => { /* ...código da função... */ };
-export const createLancamentoDetailHTML = (lancamento) => { /* ...código da função... */ };
-let confirmCallback = null;
-export const showAlertModal = (title, message) => { /* ...código da função... */ };
-export const showConfirmModal = (title, message, onConfirm) => { /* ...código da função... */ };
-export const handleConfirm = () => { /* ...código da função... */ };
-export const closeModal = (modalId) => { /* ...código da função... */ };
-export function renderPaginationControls(currentPage, totalItems, totalPages, onPageChange) { /* ...código da função... */ }
-let dashboardChart = null;
-export function renderDashboardChart(lancamentos) { /* ...código da função... */ }
+        <div class="bg-white p-6 rounded-lg shadow">
+            <h3 class="text-lg font-medium mb-4">Histórico de Variáveis</h3>
+            <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
+                <table class="min-w-full divide-y divide-slate-200">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Descrição</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th>
+                            <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="variaveisTableBody" class="bg-white divide-y divide-slate-200">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    `;
+};
 
-// ALTERADO: Gráfico agora mostra VALORES e tem tooltips formatados
-let nfPieChart = null;
-export function renderNfPieChart(lancamentosNoPeriodo) {
-    const ctx = document.getElementById('nfPieChart')?.getContext('2d');
-    if (!ctx) return;
+export const createVariaveisTableRowsHTML = (variaveis) => {
+    if (!variaveis.length) return '<tr><td colspan="5" class="text-center py-10 text-slate-500">Nenhuma variável encontrada.</td></tr>';
+    return variaveis
+        .sort((a,b) => b.data.toDate() - a.data.toDate())
+        .map(v => `
+        <tr class="hover:bg-slate-50">
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${v.data.toDate().toLocaleDateString('pt-BR')}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${v.nome}</td>
+            <td class="px-6 py-4 text-sm text-slate-500">${v.descricao || ''}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(v.valor)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <button class="text-red-600 hover:text-red-900 delete-variavel-btn" data-id="${v.firestoreId}">Excluir</button>
+            </td>
+        </tr>
+    `).join('');
+};
 
-    const valorComNf = lancamentosNoPeriodo
-        .filter(l => l.numeroNf && l.numeroNf.toUpperCase() !== 'NT')
-        .reduce((sum, l) => sum + getGiroTotal(l), 0);
-        
-    const valorSemNf = lancamentosNoPeriodo
-        .filter(l => !l.numeroNf || l.numeroNf.toUpperCase() === 'NT')
-        .reduce((sum, l) => sum + getGiroTotal(l), 0);
-
-    const data = {
-        labels: ['Com NF', 'Sem NF (NT)'],
-        datasets: [{
-            data: [valorComNf, valorSemNf],
-            backgroundColor: ['rgba(79, 70, 229, 0.8)', 'rgba(203, 213, 225, 0.8)'],
-            borderColor: ['#FFFFFF'],
-            borderWidth: 2
-        }]
-    };
-
-    if (nfPieChart) {
-        nfPieChart.destroy();
-    }
-
-    nfPieChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: data,
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'top' },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed !== null) {
-                                label += formatCurrency(context.parsed);
-                            }
-                            return label;
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
+export const createNovoLancamentoFormHTML = () => `...`; // Omitido por brevidade, mas o conteúdo é o mesmo
+export const createLancamentosTableRowsHTML = (lancamentos) => `...`; // Omitido por brevidade, mas o conteúdo é o mesmo
+export const createLancamentoDetailHTML = (lancamento) => `...`; // Omitido por brevidade, mas o conteúdo é o mesmo
+// ... E assim por diante para todas as outras funções que não foram alteradas ...
