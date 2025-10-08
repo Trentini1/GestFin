@@ -323,6 +323,16 @@ appView.addEventListener('click', async (e) => {
     else if (target.closest('.back-to-list')) { showView('lancamentosListView'); }
     else if (target.closest('.edit-cliente-btn')) { showView('clienteDetailView', target.closest('.edit-cliente-btn').dataset.id); }
     else if (target.closest('.back-to-list-clientes')) { showView('clientesView'); }
+    else if (target.id === 'dashboardFilterBtn') {
+    const startDateValue = document.getElementById('dashboardStartDate').value;
+    const endDateValue = document.getElementById('dashboardEndDate').value;
+
+    // Adicionar T00:00:00 para evitar problemas de fuso horário
+    dashboardStartDate = new Date(startDateValue + 'T00:00:00');
+    dashboardEndDate = new Date(endDateValue + 'T00:00:00');
+
+    showView('dashboardView');
+}
     else if (target.closest('.delete-cliente-btn')) {
         const id = target.closest('.delete-cliente-btn').dataset.id;
         showConfirmModal('Excluir Cliente?', 'Esta ação não pode ser desfeita.', async () => {
