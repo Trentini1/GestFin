@@ -302,3 +302,42 @@ export function renderNfPieChart(lancamentosNoPeriodo) {
     if (nfPieChart) nfPieChart.destroy();
     nfPieChart = new Chart(ctx, { type: 'doughnut', data, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' }, tooltip: { callbacks: { label: context => `${context.label || ''}: ${formatCurrency(context.parsed)}` } } } } });
 }
+export const createClientesViewHTML = () => `
+    <div class="space-y-6 max-w-4xl mx-auto">
+        <h2 class="text-2xl font-bold">Gerenciar Clientes</h2>
+        <form id="addClienteForm" class="bg-white p-6 rounded-lg shadow space-y-4">
+            <h3 class="text-lg font-medium">Adicionar Novo Cliente</h3>
+            <div>
+                <label class="block text-sm font-medium text-slate-700">Nome do Cliente</label>
+                <input type="text" id="newClienteNome" required placeholder="Nome completo ou Razão Social" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+            </div>
+            <div class="flex justify-end">
+                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Cliente</button>
+            </div>
+        </form>
+        <div class="bg-white p-6 rounded-lg shadow">
+            <h3 class="text-lg font-medium mb-4">Clientes Cadastrados</h3>
+            <table class="min-w-full divide-y divide-slate-200">
+                <thead class="bg-slate-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
+                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
+                    </tr>
+                </thead>
+                <tbody id="clientesTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+`;
+
+export const createClientesTableRowsHTML = (clientes) => {
+    if (!clientes.length) return '<tr><td colspan="2" class="text-center py-10 text-slate-500">Nenhum cliente cadastrado.</td></tr>';
+    return clientes.sort((a,b) => a.nome.localeCompare(b.nome)).map(c => `
+        <tr class="hover:bg-slate-50">
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${c.nome}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <button class="text-red-600 hover:text-red-900 delete-cliente-btn" data-id="${c.firestoreId}">Excluir</button>
+            </td>
+        </tr>
+    `).join('');
+};
