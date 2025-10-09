@@ -144,6 +144,9 @@ export const createLancamentosTableRowsHTML = (lancamentos, userProfile) => {
         </tr>`).join('');
 };
 
+/**
+ * ALTERAÇÃO: Adicionada a exibição de quem criou e editou o lançamento.
+ */
 export const createLancamentoDetailHTML = (data, userProfile) => {
     const { lancamento, custosDaOs } = data;
     const isReadOnly = userProfile.funcao === 'leitura';
@@ -163,6 +166,13 @@ export const createLancamentoDetailHTML = (data, userProfile) => {
             <span class="font-medium">${formatCurrency(p.valor)}</span>
         </li>
     `).join('');
+
+    const auditInfoHTML = `
+        <div class="text-xs text-slate-400 mt-2 text-right">
+            ${lancamento.criadoPor ? `Criado por ${lancamento.criadoPor} em ${lancamento.criadoEm?.toDate().toLocaleDateString('pt-BR') || ''}.` : ''}
+            ${lancamento.editadoPor ? `<br>Última edição por ${lancamento.editadoPor} em ${lancamento.editadoEm?.toDate().toLocaleString('pt-BR') || ''}.` : ''}
+        </div>
+    `;
 
     return `
     <button class="back-to-list flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
@@ -193,9 +203,12 @@ export const createLancamentoDetailHTML = (data, userProfile) => {
             </div>
         </fieldset>
         ${!isReadOnly ? `
-        <div class="flex justify-end pt-4 border-t">
-            <button type="button" id="deleteLancamentoBtn" class="text-red-600 hover:underline mr-auto">Excluir Lançamento</button>
-            <button type="submit" class="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button>
+        <div class="flex justify-between items-center pt-4 border-t">
+            <button type="button" id="deleteLancamentoBtn" class="text-red-600 hover:underline">Excluir Lançamento</button>
+            <div class="flex flex-col items-end">
+                 <button type="submit" class="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button>
+                 ${auditInfoHTML}
+            </div>
         </div>
         ` : ''}
     </form>
@@ -216,6 +229,7 @@ export const createLancamentoDetailHTML = (data, userProfile) => {
         </div>
     </div>`;
 };
+
 
 export const createVariaveisViewHTML = (userProfile) => {
     const isNotAdmin = userProfile.funcao !== 'admin';
@@ -333,6 +347,9 @@ export const createClienteDetailHTML = (cliente) => `
     </form>
 `;
 
+/**
+ * ALTERAÇÃO: Adicionado campo de seleção para 'Comprador' e ajustado o grid.
+ */
 export const createNotasFiscaisViewHTML = (lancamentos) => {
     const osList = [...new Set(lancamentos.map(l => l.os).filter(Boolean))];
     return `
@@ -340,11 +357,21 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
         <h2 class="text-2xl font-bold">Gerenciar Notas Fiscais de Compra</h2>
         <form id="addNotaCompraForm" class="bg-white p-6 rounded-lg shadow space-y-4">
             <h3 class="text-lg font-medium">Adicionar Nova NF de Compra</h3>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div><label class="block text-sm font-medium text-slate-700">O.S. Vinculada</label><input type="text" id="newNotaOsId" required list="os-list" placeholder="Nº da O.S." class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"><datalist id="os-list">${osList.map(os => `<option value="${os}"></option>`).join('')}</datalist></div>
                 <div><label class="block text-sm font-medium text-slate-700">Nº da NF</label><input type="text" id="newNotaNumeroNf" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
                 <div><label class="block text-sm font-medium text-slate-700">Data Emissão</label><input type="date" id="newNotaData" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                 <div><label class="block text-sm font-medium text-slate-700">Chave de Acesso (Opcional)</label><input type="text" id="newNotaChaveAcesso" placeholder="44 dígitos" maxlength="44" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                
+                <div>
+                    <label for="newNotaComprador" class="block text-sm font-medium text-slate-700">Comprador</label>
+                    <select id="newNotaComprador" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                        <option value="Erick">Erick</option>
+                        <option value="Fernando">Fernando</option>
+                        <option value="Lourival">Lourival</option>
+                    </select>
+                </div>
+
+                <div><label class="block text-sm font-medium text-slate-700">Chave de Acesso</label><input type="text" id="newNotaChaveAcesso" placeholder="44 dígitos (opcional)" maxlength="44" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
             </div>
             <div class="pt-4 border-t">
                 <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento da Compra</h4>
@@ -384,7 +411,7 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nº NF</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">O.S. Vinculada</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor Total</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Comprador</th> <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor Total</th>
                         <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
                     </tr>
                 </thead>
@@ -394,8 +421,11 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
     </div>`;
 };
 
+/**
+ * ALTERAÇÃO: Adicionada a coluna 'Comprador' e ajustado o colspan.
+ */
 export const createNotasCompraTableRowsHTML = (notas, lancamentos) => {
-    if (!notas.length) return '<tr><td colspan="5" class="text-center py-10 text-slate-500">Nenhuma nota fiscal de compra encontrada para os filtros.</td></tr>';
+    if (!notas.length) return '<tr><td colspan="6" class="text-center py-10 text-slate-500">Nenhuma nota fiscal de compra encontrada para os filtros.</td></tr>';
     
     return notas.map(n => {
         const lancamentoCorrespondente = lancamentos.find(l => l.os === n.osId);
@@ -414,6 +444,7 @@ export const createNotasCompraTableRowsHTML = (notas, lancamentos) => {
                     <span class="text-slate-500" title="Não foi possível encontrar um lançamento com este número de O.S.">${n.osId}</span> 
                 `}
             </td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${n.comprador || '-'}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(n.valorTotal)}</td>
             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <button class="text-red-600 hover:text-red-900 delete-notacompra-btn" data-id="${n.firestoreId}">Excluir</button>
@@ -481,6 +512,10 @@ export function renderPaginationControls(currentPage, totalItems, totalPages, on
     const container = document.getElementById('pagination-controls');
     if (!container) return;
     const itemsPerPage = 15;
+    if (totalItems <= itemsPerPage) {
+        container.innerHTML = '';
+        return;
+    }
     container.innerHTML = `<div><p class="text-sm text-gray-700">Mostrando <span class="font-medium">${Math.min((currentPage - 1) * itemsPerPage + 1, totalItems)}</span> a <span class="font-medium">${Math.min(currentPage * itemsPerPage, totalItems)}</span> de <span class="font-medium">${totalItems}</span> resultados</p></div><div><nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"><button id="prev-page" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50">Anterior</button><button id="next-page" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50">Próximo</button></nav></div>`;
     const prevButton = document.getElementById('prev-page');
     const nextButton = document.getElementById('next-page');
