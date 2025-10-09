@@ -110,6 +110,29 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
+    <div id="pagamentosModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 h-full w-full flex items-center justify-center hidden z-50">
+    <div class="relative mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg leading-6 font-medium text-gray-900" id="pagamentosModalTitle">Gerenciar Pagamentos</h3>
+            <div id="modal-pagamentos-list" class="mt-4 space-y-3 max-h-64 overflow-y-auto pr-2">
+                </div>
+            <div class="mt-4">
+                <button id="addModalPagamentoBtn" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
+                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Outro Pagamento
+                </button>
+            </div>
+            <div class="flex justify-end gap-4 px-4 py-3 mt-4 -mx-5 -mb-5 bg-gray-50 rounded-b-md">
+                <button id="pagamentosModalCancelBtn" class="px-4 py-2 bg-gray-200 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-300">
+                    Cancelar
+                </button>
+                <button id="pagamentosModalSaveBtn" class="px-4 py-2 bg-indigo-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-indigo-700">
+                    Salvar Alterações
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+    
     <script type="module" src="js/main.js"></script>
 </body>
 </html>
