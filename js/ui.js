@@ -70,6 +70,25 @@ export const createLancamentosListHTML = (userProfile) => {
             </table>
         </div>
         <div id="pagination-controls" class="flex justify-between items-center text-sm"></div>
+
+        <div class="mt-8 bg-white p-6 rounded-lg shadow">
+            <h3 class="text-lg font-medium mb-4">Exportar Relatório</h3>
+            <div class="flex space-x-4">
+                <button id="exportPdfBtn" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="printer" class="w-4 h-4 mr-2"></i> Imprimir / Salvar PDF</button>
+                <button id="exportCsvBtn" class="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="file-spreadsheet" class="w-4 h-4 mr-2"></i> Exportar para CSV (Excel)</button>
+            </div>
+        </div>
+        ${!isReadOnly ? `
+        <div class="mt-8 bg-white p-6 rounded-lg shadow">
+            <h3 class="text-lg font-medium mb-4">Backup e Restauração</h3>
+            <p class="text-sm text-slate-500 mb-4">Salve todos os seus dados ou restaure a partir de um backup.</p>
+            <div class="flex space-x-4">
+                <button id="backupBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="download" class="w-4 h-4 mr-2"></i> Fazer Backup (JSON)</button>
+                <button id="restoreBtn" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="upload" class="w-4 h-4 mr-2"></i> Restaurar Backup</button>
+                <input type="file" id="restoreInput" class="hidden" accept=".json">
+            </div>
+        </div>
+        ` : ''}
     </div>`;
 };
 
