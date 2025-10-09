@@ -241,30 +241,42 @@ export const createVariaveisViewHTML = (userProfile) => {
                 <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Variável</button>
             </div>
         </form>
-        <div class="bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Histórico de Variáveis</h3>
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-200">
-                    <thead class="bg-slate-50">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Descrição</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th>
-                            <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
-                        </tr>
-                    </thead>
-                    <tbody id="variaveisTableBody"></tbody>
-                </table>
+
+        <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <h3 class="text-lg font-medium">Histórico de Variáveis</h3>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <label for="variaveisMonthFilter" class="text-sm font-medium">Mês:</label>
+                    <select id="variaveisMonthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="variaveisYearFilter" class="text-sm font-medium">Ano:</label>
+                    <select id="variaveisYearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select>
+                </div>
             </div>
+        </div>
+
+        <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
+            <table class="min-w-full divide-y divide-slate-200">
+                <thead class="bg-slate-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Descrição</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th>
+                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
+                    </tr>
+                </thead>
+                <tbody id="variaveisTableBody"></tbody>
+            </table>
         </div>
     </div>`;
 };
 
 export const createVariaveisTableRowsHTML = (variaveis, userProfile) => {
     const isNotAdmin = userProfile.funcao !== 'admin';
-    if (!variaveis.length) return '<tr><td colspan="4" class="text-center py-10 text-slate-500">Nenhuma variável encontrada.</td></tr>';
+    if (!variaveis.length) return '<tr><td colspan="4" class="text-center py-10 text-slate-500">Nenhuma variável encontrada para os filtros.</td></tr>';
     
-    return variaveis.sort((a,b) => b.data.toDate() - a.data.toDate()).map(v => `
+    return variaveis.map(v => `
         <tr class="hover:bg-slate-50">
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${v.data.toDate().toLocaleDateString('pt-BR')}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${v.descricao}</td>
@@ -378,6 +390,7 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
     const osList = [...new Set(lancamentos.map(l => l.os).filter(Boolean))];
     return `
     <div class="space-y-6 max-w-6xl mx-auto">
+        <h2 class="text-2xl font-bold">Gerenciar Notas Fiscais de Compra</h2>
         <form id="addNotaCompraForm" class="bg-white p-6 rounded-lg shadow space-y-4">
             <h3 class="text-lg font-medium">Adicionar Nova NF de Compra</h3>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -413,6 +426,11 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
             </div>
             <div class="pt-4 border-t">
                 <h4 class="text-md font-medium mb-2">Itens da Nota</h4>
+                <div class="grid grid-cols-12 gap-x-2 gap-y-1 text-sm font-medium text-slate-600 px-1">
+                    <div class="col-span-6">Descrição do item</div>
+                    <div class="col-span-2">Qtd.</div>
+                    <div class="col-span-3">Valor Unit.</div>
+                </div>
                 <div id="itens-container" class="space-y-2"></div>
                 <button type="button" id="addItemBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
                     <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Item
