@@ -15,6 +15,8 @@ import {
     createNotasFiscaisViewHTML, createNotasCompraTableRowsHTML
 } from './ui.js';
 
+const DEFAULT_COMISSION_RATE = 0.5;
+
 // --- Estado da Aplicação ---
 let currentUserProfile = null;
 let lancamentosUnsubscribe = null;
@@ -555,8 +557,17 @@ appView.addEventListener('submit', async (e) => {
                 icms: parseFloat(form.querySelector(`#${prefix}ImpostoIcms`).value) || 0,
             };
             const valorTotal = parseFloat(form.querySelector(`#${prefix}ValorTotal`).value) || 0;
-            const taxaComissao = parseFloat(form.querySelector(`#${prefix}TaxaComissao`)?.value) || 0;
-            const data = {
+        
+        let taxaComissao;
+       
+        if (currentUserProfile.funcao === 'padrao' && !isEdit) {
+            taxaComissao = DEFAULT_COMISSION_RATE;
+        } else {
+           
+            taxaComissao = parseFloat(form.querySelector(`#${prefix}TaxaComissao`)?.value) || 0;
+        }
+
+        const data = {
                 dataEmissao: Timestamp.fromDate(new Date(form.querySelector(`#${prefix}DataEmissao`).value + 'T12:00:00Z')),
                 cliente: form.querySelector(`#${prefix}Cliente`).value,
                 numeroNf: form.querySelector(`#${prefix}NumeroNf`).value || 'NT',
