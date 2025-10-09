@@ -436,26 +436,63 @@ function populateVariaveisFiltersAndApply() {
 }
 
 function generatePrintReport() {
-    const dataToPrint = getFilteredData(); // Pega os dados já filtrados na tela
+    const dataToPrint = getFilteredData();
     if (dataToPrint.length === 0) {
-        showAlertModal('Aviso', 'Não há dados para imprimir.');
+        showAlertModal('Aviso', 'Não há dados para imprimir com os filtros atuais.');
         return;
     }
 
     const reportWindow = window.open('', '', 'height=800,width=1200');
     reportWindow.document.write('<html><head><title>Relatório de Lançamentos</title>');
+    
+    // --- INÍCIO DO ESTILO APRIMORADO ---
     reportWindow.document.write(`
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; }
-            h1 { text-align: center; }
+            @media print {
+                body { -webkit-print-color-adjust: exact; } /* Garante que as cores de fundo sejam impressas no Chrome/Safari */
+            }
+            body { 
+                font-family: Arial, Helvetica, sans-serif; 
+                font-size: 10pt; 
+                color: #333;
+            }
+            h1 { 
+                text-align: center; 
+                margin-bottom: 10px;
+                font-size: 16pt;
+                color: #000;
+            }
+            p {
+                font-size: 8pt;
+                color: #777;
+                margin-bottom: 20px;
+                text-align: center;
+            }
+            table { 
+                width: 100%; 
+                border-collapse: collapse; 
+            }
+            th, td { 
+                border: 1px solid #ccc; 
+                padding: 4px 6px; 
+                text-align: left; 
+                word-wrap: break-word;
+            }
+            th { 
+                background-color: #f0f0f0; 
+                font-weight: bold;
+                color: #000;
+            }
+            tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
         </style>
     `);
+    // --- FIM DO ESTILO APRIMORADO ---
+
     reportWindow.document.write('</head><body>');
     reportWindow.document.write(`<h1>Relatório de Lançamentos</h1>`);
-    reportWindow.document.write(`<p>Gerado em: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}</p>`);
+    reportWindow.document.write(`<p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>`);
     reportWindow.document.write('<table><thead><tr>');
     reportWindow.document.write('<th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th>');
     reportWindow.document.write('</tr></thead><tbody>');
@@ -467,10 +504,16 @@ function generatePrintReport() {
         reportWindow.document.write(`<td>${l.numeroNf || 'NT'}</td>`);
         reportWindow.document.write(`<td>${l.os || ''}</td>`);
         reportWindow.document.write(`<td>${formatCurrency(getGiroTotal(l))}</td>`);
-        reportWindow.document.write(`<td>${currentUserProfile.funcao !== 'padrao' ? formatCurrency(l.comissao) : 'N/A'}</td>`);
+        reportWindow.document.write(`<td>${currentUserProfile.funcao !== 'padrao' ? formatCurrency(l.comissao || 0) : 'N/A'}</td>`);
         reportWindow.document.write(`<td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td>`);
         reportWindow.document.write('</tr>');
     });
+
+    reportWindow.document.write('</tbody></table></body></html>');
+    reportWindow.document.close();
+    reportWindow.focus(); 
+    reportWindow.print();
+}
 
     reportWindow.document.write('</tbody></table></body></html>');
     reportWindow.document.close();
