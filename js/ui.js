@@ -1,3 +1,5 @@
+// js/ui.js (COMPLETO E ATUALIZADO)
+
 import { formatCurrency, getGiroTotal } from './utils.js';
 
 const DEFAULT_COMISSION_RATE = 0.5;
@@ -144,9 +146,6 @@ export const createLancamentosTableRowsHTML = (lancamentos, userProfile) => {
         </tr>`).join('');
 };
 
-/**
- * ALTERAÇÃO: Adicionada a exibição de quem criou e editou o lançamento.
- */
 export const createLancamentoDetailHTML = (data, userProfile) => {
     const { lancamento, custosDaOs } = data;
     const isReadOnly = userProfile.funcao === 'leitura';
@@ -347,9 +346,6 @@ export const createClienteDetailHTML = (cliente) => `
     </form>
 `;
 
-/**
- * ALTERAÇÃO: Adicionado campo de seleção para 'Comprador' e ajustado o grid.
- */
 export const createNotasFiscaisViewHTML = (lancamentos) => {
     const osList = [...new Set(lancamentos.map(l => l.os).filter(Boolean))];
     return `
@@ -361,7 +357,6 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
                 <div><label class="block text-sm font-medium text-slate-700">O.S. Vinculada</label><input type="text" id="newNotaOsId" required list="os-list" placeholder="Nº da O.S." class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"><datalist id="os-list">${osList.map(os => `<option value="${os}"></option>`).join('')}</datalist></div>
                 <div><label class="block text-sm font-medium text-slate-700">Nº da NF</label><input type="text" id="newNotaNumeroNf" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
                 <div><label class="block text-sm font-medium text-slate-700">Data Emissão</label><input type="date" id="newNotaData" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                
                 <div>
                     <label for="newNotaComprador" class="block text-sm font-medium text-slate-700">Comprador</label>
                     <select id="newNotaComprador" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
@@ -370,7 +365,6 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
                         <option value="Lourival">Lourival</option>
                     </select>
                 </div>
-
                 <div><label class="block text-sm font-medium text-slate-700">Chave de Acesso</label><input type="text" id="newNotaChaveAcesso" placeholder="44 dígitos (opcional)" maxlength="44" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
             </div>
             <div class="pt-4 border-t">
@@ -411,8 +405,9 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nº NF</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">O.S. Vinculada</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Comprador</th> <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor Total</th>
-                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Comprador</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor Total</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Ações</th>
                     </tr>
                 </thead>
                 <tbody id="notasCompraTableBody"></tbody>
@@ -421,11 +416,8 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
     </div>`;
 };
 
-/**
- * ALTERAÇÃO: Adicionada a coluna 'Comprador' e ajustado o colspan.
- */
 export const createNotasCompraTableRowsHTML = (notas, lancamentos) => {
-    if (!notas.length) return '<tr><td colspan="6" class="text-center py-10 text-slate-500">Nenhuma nota fiscal de compra encontrada para os filtros.</td></tr>';
+    if (!notas.length) return '<tr><td colspan="6" class="text-center py-10 text-slate-500">Nenhuma nota fiscal de compra encontrada.</td></tr>';
     
     return notas.map(n => {
         const lancamentoCorrespondente = lancamentos.find(l => l.os === n.osId);
@@ -437,20 +429,78 @@ export const createNotasCompraTableRowsHTML = (notas, lancamentos) => {
             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${n.numeroNf}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm">
                 ${lancamentoId ? `
-                    <button class="link-to-os text-indigo-600 hover:underline font-medium" data-lancamento-id="${lancamentoId}">
-                        ${n.osId}
-                    </button>
-                ` : `
-                    <span class="text-slate-500" title="Não foi possível encontrar um lançamento com este número de O.S.">${n.osId}</span> 
-                `}
+                    <button class="link-to-os text-indigo-600 hover:underline font-medium" data-lancamento-id="${lancamentoId}">${n.osId}</button>` 
+                    : `<span class="text-slate-500" title="Lançamento não encontrado">${n.osId}</span>`}
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${n.comprador || '-'}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(n.valorTotal)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
+                <button class="text-indigo-600 hover:text-indigo-900 edit-notacompra-btn" data-id="${n.firestoreId}">Editar</button>
                 <button class="text-red-600 hover:text-red-900 delete-notacompra-btn" data-id="${n.firestoreId}">Excluir</button>
             </td>
         </tr>`
     }).join('');
+};
+
+// ====================================================================================
+// NOVA FUNÇÃO: Formulário para editar uma Nota Fiscal de Compra
+// ====================================================================================
+export const createNotaCompraDetailHTML = (nota, lancamentos) => {
+    const osList = [...new Set(lancamentos.map(l => l.os).filter(Boolean))];
+
+    const createItemRow = (item = {}) => `
+        <div class="item-row grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-6"><input type="text" value="${item.descricao || ''}" placeholder="Descrição do item" class="item-descricao mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+            <div class="col-span-2"><input type="number" value="${item.quantidade || 1}" class="item-quantidade mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+            <div class="col-span-3"><input type="number" step="0.01" value="${item.valor || ''}" placeholder="Valor Unit." class="item-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+            <div class="col-span-1 text-right"><button type="button" class="remove-item-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>
+        </div>
+    `;
+
+    return `
+    <div class="space-y-6 max-w-6xl mx-auto">
+        <button class="back-to-list-notas flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
+        
+        <form id="editNotaCompraForm" data-id="${nota.firestoreId}" class="bg-white p-6 rounded-lg shadow space-y-4">
+            <h3 class="text-2xl font-bold">Editar NF de Compra</h3>
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div><label class="block text-sm font-medium text-slate-700">O.S. Vinculada</label><input type="text" id="editNotaOsId" value="${nota.osId}" required list="os-list" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"><datalist id="os-list">${osList.map(os => `<option value="${os}"></option>`).join('')}</datalist></div>
+                <div><label class="block text-sm font-medium text-slate-700">Nº da NF</label><input type="text" id="editNotaNumeroNf" value="${nota.numeroNf}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">Data Emissão</label><input type="date" id="editNotaData" value="${nota.dataEmissao.toDate().toISOString().split('T')[0]}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                
+                <div>
+                    <label for="editNotaComprador" class="block text-sm font-medium text-slate-700">Comprador</label>
+                    <select id="editNotaComprador" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                        <option value="Erick" ${nota.comprador === 'Erick' ? 'selected' : ''}>Erick</option>
+                        <option value="Fernando" ${nota.comprador === 'Fernando' ? 'selected' : ''}>Fernando</option>
+                        <option value="Lourival" ${nota.comprador === 'Lourival' ? 'selected' : ''}>Lourival</option>
+                    </select>
+                </div>
+
+                <div><label class="block text-sm font-medium text-slate-700">Chave de Acesso</label><input type="text" id="editNotaChaveAcesso" value="${nota.chaveAcesso || ''}" maxlength="44" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+            </div>
+            <div class="pt-4 border-t">
+                <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento da Compra</h4>
+                <div id="pagamentos-summary-compra" class="text-sm text-slate-500 p-3 bg-gray-50 rounded-md border">Nenhum pagamento adicionado.</div>
+                <input type="hidden" id="hidden-pagamentos-data-compra" name="pagamentos" value='${JSON.stringify(nota.pagamentos || [])}'>
+                <button type="button" data-modal-target="compra" id="managePagamentosCompraBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
+                    <i data-lucide="credit-card" class="w-4 h-4 mr-1"></i> Gerenciar Pagamentos
+                </button>
+            </div>
+            <div class="pt-4 border-t">
+                <h4 class="text-md font-medium mb-2">Itens da Nota</h4>
+                <div id="itens-container" class="space-y-2">
+                    ${(nota.itens || []).map(createItemRow).join('')}
+                </div>
+                <button type="button" id="addItemBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
+                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Item
+                </button>
+            </div>
+            <div class="flex justify-end pt-4 border-t">
+                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button>
+            </div>
+        </form>
+    </div>`;
 };
 
 export const createPagamentoRowHTML = (data = {}) => {
