@@ -12,7 +12,7 @@ import {
     showConfirmModal, closeModal, handleConfirm, renderPaginationControls, renderDashboardChart,
     renderNfPieChart, createVariaveisViewHTML, createVariaveisTableRowsHTML,
     createClientesViewHTML, createClientesTableRowsHTML, createClienteDetailHTML,
-    createNotasFiscaisViewHTML, createNotasCompraTableRowsHTML
+    createNotasFiscaisViewHTML, createNotasCompraTableRowsHTML, createPagamentoRowHTML
 } from './ui.js';
 
 const DEFAULT_COMISSION_RATE = 0.5;
@@ -29,22 +29,14 @@ let notasCompraUnsubscribe = null;
 let allNotasCompraData = [];
 let currentPage = 1;
 const ITEMS_PER_PAGE = 15;
-
-// Filtros de Lançamentos
 let selectedMonthFilter = null;
 let selectedYearFilter = null;
 let searchTerm = '';
 let sortState = { key: 'dataEmissao', direction: 'desc' };
-
-// Filtros de Notas Fiscais
 let nfSelectedMonthFilter = null;
 let nfSelectedYearFilter = null;
-
-// Filtros de Variáveis
 let variaveisSelectedMonthFilter = null;
 let variaveisSelectedYearFilter = null;
-
-// Filtro de Dashboard
 const hoje = new Date();
 const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
 let dashboardStartDate = primeiroDiaDoMes;
@@ -64,24 +56,19 @@ onAuthStateChanged(auth, async (user) => {
     if (user) {
         const userDocRef = doc(db, "usuarios", user.uid);
         const userDocSnap = await getDoc(userDocRef);
-
         if (userDocSnap.exists()) {
             currentUserProfile = userDocSnap.data();
             userNameEl.textContent = currentUserProfile.nome;
-
             loadingView.style.display = 'none';
             appView.style.display = 'block';
-
             if (!lancamentosUnsubscribe) attachLancamentosListener();
             if (currentUserProfile.funcao !== 'padrao' && !variaveisUnsubscribe) attachVariaveisListener();
             if (!clientesUnsubscribe) attachClientesListener();
             if (!notasCompraUnsubscribe) attachNotasCompraListener();
-            
             const variaveisNavLink = document.querySelector('[data-view="variaveisView"]');
-            if(variaveisNavLink) {
-                 variaveisNavLink.style.display = (currentUserProfile.funcao === 'padrao') ? 'none' : 'flex';
+            if (variaveisNavLink) {
+                variaveisNavLink.style.display = (currentUserProfile.funcao === 'padrao') ? 'none' : 'flex';
             }
-
             showView('dashboardView');
         } else {
             showAlertModal('Erro de Perfil', 'Seu perfil de usuário não foi encontrado no banco de dados. Contate o administrador.');
@@ -127,7 +114,7 @@ function attachClientesListener() {
         const currentViewEl = document.querySelector('.view[style*="block"]');
         if (currentViewEl?.id === 'clientesView') {
             const tableBody = document.getElementById('clientesTableBody');
-            if(tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
+            if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
         }
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os clientes."));
 }
@@ -178,16 +165,15 @@ async function showView(viewId, dataId = null) {
                 showView('clientesView');
             }
         } else {
-             renderView(viewId);
-             if (viewId === 'lancamentosListView') populateFiltersAndApply();
-             if (viewId === 'notasFiscaisView') populateNfFiltersAndApply();
-             if (viewId === 'variaveisView') populateVariaveisFiltersAndApply();
-             
-             if (viewId === 'notasFiscaisView' && currentUserProfile.funcao !== 'leitura') {
+            renderView(viewId);
+            if (viewId === 'lancamentosListView') populateFiltersAndApply();
+            if (viewId === 'notasFiscaisView') populateNfFiltersAndApply();
+            if (viewId === 'variaveisView') populateVariaveisFiltersAndApply();
+            if (viewId === 'notasFiscaisView' && currentUserProfile.funcao !== 'leitura') {
                 setTimeout(() => document.getElementById('addItemBtn')?.click(), 100);
             }
         }
-    } catch(e) {
+    } catch (e) {
         showAlertModal("Erro ao carregar a visão", e.message);
         renderView(viewId);
     }
@@ -195,8 +181,8 @@ async function showView(viewId, dataId = null) {
     navLinks.forEach(link => {
         const linkView = link.dataset.view;
         const isActive = linkView === viewId ||
-                         (linkView === 'lancamentosListView' && viewId === 'lancamentoDetailView') ||
-                         (linkView === 'clientesView' && viewId === 'clienteDetailView');
+            (linkView === 'lancamentosListView' && viewId === 'lancamentoDetailView') ||
+            (linkView === 'clientesView' && viewId === 'clienteDetailView');
 
         link.classList.toggle('text-indigo-600', isActive);
         link.classList.toggle('border-b-2', isActive);
@@ -205,53 +191,10 @@ async function showView(viewId, dataId = null) {
     });
 }
 
-function createPagamentoRow(containerId, data = {}) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    const rowId = `pagamento-row-${Date.now()}`;
-    const html = `
-        <div id="${rowId}" class="pagamento-row grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-5">
-                <select class="pagamento-metodo mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-                    <option value="PIX">PIX</option>
-                    <option value="Dinheiro">Dinheiro</option>
-                    <option value="Cartão de Crédito">Cartão de Crédito</option>
-                    <option value="Cartão de Débito">Cartão de Débito</option>
-                    <option value="Boleto">Boleto</option>
-                    <option value="Cheque">Cheque</option>
-                </select>
-            </div>
-            <div class="col-span-4">
-                <input type="number" step="0.01" placeholder="Valor" class="pagamento-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-            </div>
-            <div class="col-span-2">
-                <input type="number" placeholder="Parcelas" class="pagamento-parcelas mt-1 block w-full rounded-md border-slate-300 shadow-sm hidden">
-            </div>
-            <div class="col-span-1 text-right">
-                <button type="button" class="remove-pagamento-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-            </div>
-        </div>
-    `;
-    container.insertAdjacentHTML('beforeend', html);
-    lucide.createIcons();
-    
-    const newRow = document.getElementById(rowId);
-    if (data.metodo) newRow.querySelector('.pagamento-metodo').value = data.metodo;
-    if (data.valor) newRow.querySelector('.pagamento-valor').value = data.valor;
-    if (data.parcelas) {
-        const parcelasInput = newRow.querySelector('.pagamento-parcelas');
-        parcelasInput.value = data.parcelas;
-        if (data.metodo === 'Cartão de Crédito' || data.metodo === 'Boleto') {
-            parcelasInput.classList.remove('hidden');
-        }
-    }
-}
-
 function renderView(viewId, data = {}) {
     const viewContainer = document.getElementById(viewId);
     if (!viewContainer) return;
-    
+
     if (data.isLoading) {
         viewContainer.innerHTML = `<div class="flex items-center justify-center h-96"><div class="loader"></div></div>`;
         return;
@@ -288,16 +231,12 @@ function renderView(viewId, data = {}) {
     }
     viewContainer.innerHTML = html;
     lucide.createIcons();
-    
+
+    // Pós-renderização
     if (viewId === 'dashboardView') {
         renderDashboardComponents();
     } else if (viewId === 'lancamentoDetailView' && data.lancamento) {
-        const pagamentos = data.lancamento.pagamentos || [];
-        if (pagamentos.length > 0) {
-            pagamentos.forEach(p => createPagamentoRow('pagamentos-container', p));
-        } else if (currentUserProfile.funcao !== 'leitura') {
-             createPagamentoRow('pagamentos-container');
-        }
+        updatePagamentosSummary('lancamento');
     } else if (viewId === 'clientesView') {
         const tableBody = document.getElementById('clientesTableBody');
         if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
@@ -463,6 +402,79 @@ function populateVariaveisFiltersAndApply() {
     applyVariaveisFilters();
 }
 
+// --- LÓGICA DO MODAL DE PAGAMENTOS ---
+let activeModalTarget = null;
+
+function openPagamentosModal(target) {
+    activeModalTarget = target;
+    const hiddenInputId = `hidden-pagamentos-data${target === 'compra' ? '-compra' : ''}`;
+    const hiddenInput = document.getElementById(hiddenInputId);
+    const pagamentosList = document.getElementById('modal-pagamentos-list');
+    pagamentosList.innerHTML = '';
+
+    try {
+        const pagamentos = JSON.parse(hiddenInput.value || '[]');
+        if (pagamentos.length > 0) {
+            pagamentos.forEach(p => pagamentosList.innerHTML += createPagamentoRowHTML(p));
+        } else {
+            pagamentosList.innerHTML += createPagamentoRowHTML();
+        }
+    } catch (e) {
+        pagamentosList.innerHTML += createPagamentoRowHTML();
+    }
+    
+    lucide.createIcons();
+    document.getElementById('pagamentosModal').classList.remove('hidden');
+}
+
+function savePagamentosFromModal() {
+    const hiddenInputId = `hidden-pagamentos-data${activeModalTarget === 'compra' ? '-compra' : ''}`;
+    const hiddenInput = document.getElementById(hiddenInputId);
+    const pagamentosList = document.getElementById('modal-pagamentos-list');
+    
+    const pagamentos = [];
+    pagamentosList.querySelectorAll('.pagamento-row').forEach(row => {
+        const metodo = row.querySelector('.pagamento-metodo').value;
+        const valor = parseFloat(row.querySelector('.pagamento-valor').value);
+        const parcelasInput = row.querySelector('.pagamento-parcelas');
+        const parcelas = parcelasInput.classList.contains('hidden') ? 1 : (parseInt(parcelasInput.value) || 1);
+        
+        if(metodo && !isNaN(valor) && valor > 0) {
+            pagamentos.push({ metodo, valor, parcelas });
+        }
+    });
+
+    hiddenInput.value = JSON.stringify(pagamentos);
+    updatePagamentosSummary(activeModalTarget);
+    closePagamentosModal();
+}
+
+function updatePagamentosSummary(target) {
+    const summaryId = `pagamentos-summary${target === 'compra' ? '-compra' : ''}`;
+    const hiddenInputId = `hidden-pagamentos-data${target === 'compra' ? '-compra' : ''}`;
+    const summaryEl = document.getElementById(summaryId);
+    const hiddenInput = document.getElementById(hiddenInputId);
+
+    if (!summaryEl || !hiddenInput) return;
+
+    try {
+        const pagamentos = JSON.parse(hiddenInput.value || '[]');
+        if (pagamentos.length === 0) {
+            summaryEl.textContent = 'Nenhum pagamento adicionado.';
+            return;
+        }
+        const total = pagamentos.reduce((sum, p) => sum + p.valor, 0);
+        summaryEl.textContent = `${pagamentos.length} pagamento(s) adicionado(s). Total: ${formatCurrency(total)}`;
+    } catch (e) {
+        summaryEl.textContent = 'Erro ao ler pagamentos.';
+    }
+}
+
+function closePagamentosModal() {
+    document.getElementById('pagamentosModal').classList.add('hidden');
+    activeModalTarget = null;
+}
+    
 // --- Lógica de Relatórios e Backup ---
 function generatePrintReport() {
     const dataToPrint = getFilteredData();
@@ -470,18 +482,15 @@ function generatePrintReport() {
         showAlertModal('Aviso', 'Não há dados para imprimir com os filtros atuais.');
         return;
     }
-
     const reportWindow = window.open('', '', 'height=800,width=1200');
     reportWindow.document.write('<html><head><title>Relatório de Lançamentos</title>');
     reportWindow.document.write('<style>@media print { body { -webkit-print-color-adjust: exact; } } body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #333; } h1 { text-align: center; margin-bottom: 10px; font-size: 16pt; color: #000; } p { font-size: 8pt; color: #777; margin-bottom: 20px; text-align: center; } table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; word-wrap: break-word; } th { background-color: #f0f0f0; font-weight: bold; color: #000; } tr:nth-child(even) { background-color: #f9f9f9; }</style>');
     reportWindow.document.write('</head><body>');
     reportWindow.document.write(`<h1>Relatório de Lançamentos</h1><p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>`);
     reportWindow.document.write('<table><thead><tr><th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th></tr></thead><tbody>');
-
     dataToPrint.forEach(l => {
         reportWindow.document.write(`<tr><td>${l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || ''}</td><td>${l.cliente || ''}</td><td>${l.numeroNf || 'NT'}</td><td>${l.os || ''}</td><td>${formatCurrency(getGiroTotal(l))}</td><td>${currentUserProfile.funcao !== 'padrao' ? formatCurrency(l.comissao || 0) : 'N/A'}</td><td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td></tr>`);
     });
-
     reportWindow.document.write('</tbody></table></body></html>');
     reportWindow.document.close();
     reportWindow.focus(); 
@@ -560,13 +569,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('alertModalCloseButton')?.addEventListener('click', () => closeModal('alertModal'));
     document.getElementById('confirmModalCancelButton')?.addEventListener('click', () => closeModal('confirmModal'));
     document.getElementById('confirmModalConfirmButton')?.addEventListener('click', handleConfirm);
+    document.getElementById('pagamentosModalCancelBtn')?.addEventListener('click', closePagamentosModal);
+    document.getElementById('pagamentosModalSaveBtn')?.addEventListener('click', savePagamentosFromModal);
 });
 
 appView.addEventListener('click', async (e) => {
     if (!currentUserProfile) return;
     const isReadOnly = currentUserProfile.funcao === 'leitura';
     const actionElement = e.target.closest('button, .faturado-toggle');
-    const isAllowedForReadOnly = e.target.closest('.nav-link, .view-details, .back-to-list, .back-to-list-clientes, #exportPdfBtn, #exportCsvBtn, .sort-btn, #dashboardFilterBtn');
+    const isAllowedForReadOnly = e.target.closest('.nav-link, .view-details, .back-to-list, .back-to-list-clientes, #exportPdfBtn, #exportCsvBtn, .sort-btn, #dashboardFilterBtn, #managePagamentosBtn, #managePagamentosCompraBtn');
 
     if (isReadOnly && actionElement && !isAllowedForReadOnly) {
         e.preventDefault();
@@ -662,10 +673,16 @@ appView.addEventListener('click', async (e) => {
     else if (target.id === 'addItemBtn') {
         const container = document.getElementById('itens-container');
         if (!container) return;
-        const newItemHTML = `<div class="item-row grid grid-cols-12 gap-2 items-center"><div class="col-span-8"><input type="text" placeholder="Descrição do item" class="item-descricao mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div><div class="col-span-3"><input type="number" step="0.01" placeholder="Valor" class="item-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div><div class="col-span-1 text-right"><button type="button" class="remove-item-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div>`;
+        const newItemHTML = `
+            <div class="item-row grid grid-cols-12 gap-2 items-center">
+                <div class="col-span-6"><input type="text" placeholder="Descrição do item" class="item-descricao mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+                <div class="col-span-2"><input type="number" value="1" class="item-quantidade mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+                <div class="col-span-3"><input type="number" step="0.01" placeholder="Valor Unit." class="item-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+                <div class="col-span-1 text-right"><button type="button" class="remove-item-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>
+            </div>`;
         container.insertAdjacentHTML('beforeend', newItemHTML);
         lucide.createIcons();
-    } 
+    }
     else if (target.closest('.remove-item-btn')) {
         target.closest('.item-row').remove();
     }
@@ -674,6 +691,16 @@ appView.addEventListener('click', async (e) => {
         if (lancamentoId) {
             showView('lancamentoDetailView', lancamentoId);
         }
+    }
+    else if (target.id === 'managePagamentosBtn' || target.id === 'managePagamentosCompraBtn') {
+        openPagamentosModal(e.target.dataset.modalTarget);
+    }
+    else if (target.id === 'addModalPagamentoBtn') {
+        document.getElementById('modal-pagamentos-list').insertAdjacentHTML('beforeend', createPagamentoRowHTML());
+        lucide.createIcons();
+    }
+    else if (target.closest('.remove-pagamento-btn')) {
+        target.closest('.pagamento-row').remove();
     }
 });
 
@@ -689,7 +716,16 @@ appView.addEventListener('submit', async (e) => {
     if (submitButton) submitButton.disabled = true;
 
     try {
-        if (form.id === 'addClienteForm') {
+        if (form.id === 'addVariavelForm') {
+            await addDoc(collection(db, "variaveis"), {
+                data: Timestamp.fromDate(new Date(form.querySelector('#newVariavelData').value + 'T12:00:00Z')),
+                descricao: form.querySelector('#newVariavelDescricao').value,
+                valor: parseFloat(form.querySelector('#newVariavelValor').value),
+            });
+            showAlertModal('Sucesso', 'Nova variável cadastrada!');
+            form.reset();
+        }
+        else if (form.id === 'addClienteForm') {
             await addDoc(collection(db, "clientes"), {
                 nome: form.querySelector('#newClienteNome').value,
                 cnpj: form.querySelector('#newClienteCnpj').value,
@@ -715,24 +751,21 @@ appView.addEventListener('submit', async (e) => {
         else if (form.id === 'novoLancamentoForm' || form.id === 'editLancamentoForm') {
             const isEdit = form.id === 'editLancamentoForm';
             const prefix = isEdit ? 'edit' : 'new';
+            const pagamentos = JSON.parse(form.querySelector('#hidden-pagamentos-data').value || '[]');
             const impostos = {
-                iss: parseFloat(form.querySelector(`#${prefix}ImpostoIss`).value) || 0,
-                pis: parseFloat(form.querySelector(`#${prefix}ImpostoPis`).value) || 0,
-                cofins: parseFloat(form.querySelector(`#${prefix}ImpostoCofins`).value) || 0,
-                icms: parseFloat(form.querySelector(`#${prefix}ImpostoIcms`).value) || 0,
+                iss: parseFloat(form.querySelector(`#${prefix}ImpostoIss`)?.value) || 0,
+                pis: parseFloat(form.querySelector(`#${prefix}ImpostoPis`)?.value) || 0,
+                cofins: parseFloat(form.querySelector(`#${prefix}ImpostoCofins`)?.value) || 0,
+                icms: parseFloat(form.querySelector(`#${prefix}ImpostoIcms`)?.value) || 0,
             };
             const valorTotal = parseFloat(form.querySelector(`#${prefix}ValorTotal`).value) || 0;
-        
-        let taxaComissao;
-       
-        if (currentUserProfile.funcao === 'padrao' && !isEdit) {
-            taxaComissao = DEFAULT_COMISSION_RATE;
-        } else {
-           
-            taxaComissao = parseFloat(form.querySelector(`#${prefix}TaxaComissao`)?.value) || 0;
-        }
-
-        const data = {
+            let taxaComissao;
+            if (currentUserProfile.funcao === 'padrao' && !isEdit) {
+                taxaComissao = DEFAULT_COMISSION_RATE;
+            } else {
+                taxaComissao = parseFloat(form.querySelector(`#${prefix}TaxaComissao`)?.value) || 0;
+            }
+            const data = {
                 dataEmissao: Timestamp.fromDate(new Date(form.querySelector(`#${prefix}DataEmissao`).value + 'T12:00:00Z')),
                 cliente: form.querySelector(`#${prefix}Cliente`).value,
                 numeroNf: form.querySelector(`#${prefix}NumeroNf`).value || 'NT',
@@ -743,6 +776,7 @@ appView.addEventListener('submit', async (e) => {
                 comissao: valorTotal * (taxaComissao / 100),
                 obs: form.querySelector(`#${prefix}Obs`).value,
                 impostos: impostos,
+                pagamentos: pagamentos,
                 ...(isEdit ? {} : { faturado: null })
             };
             if(isEdit) {
@@ -759,19 +793,21 @@ appView.addEventListener('submit', async (e) => {
             }
         }
         else if (form.id === 'addNotaCompraForm') {
+            const pagamentosCompra = JSON.parse(form.querySelector('#hidden-pagamentos-data-compra').value || '[]');
             const itens = [];
             let valorTotal = 0;
             form.querySelectorAll('.item-row').forEach(row => {
                 const descricao = row.querySelector('.item-descricao').value;
+                const quantidade = parseFloat(row.querySelector('.item-quantidade').value) || 1;
                 const valor = parseFloat(row.querySelector('.item-valor').value);
                 if (descricao && !isNaN(valor)) {
-                    itens.push({ descricao, valor });
-                    valorTotal += valor;
+                    itens.push({ descricao, quantidade, valor });
+                    valorTotal += (quantidade * valor);
                 }
             });
             if (itens.length === 0) {
                 showAlertModal('Erro', 'Você precisa adicionar pelo menos um item válido.');
-                return;
+                submitButton.disabled = false; return;
             }
             const impostosCompra = {
                 icms: parseFloat(form.querySelector('#newCompraImpostoIcms').value) || 0,
@@ -787,7 +823,8 @@ appView.addEventListener('submit', async (e) => {
                 chaveAcesso: form.querySelector('#newNotaChaveAcesso').value,
                 valorTotal: valorTotal,
                 itens: itens,
-                impostos: impostosCompra
+                impostos: impostosCompra,
+                pagamentos: pagamentosCompra
             });
             form.reset();
             const itensContainer = document.getElementById('itens-container');
@@ -803,9 +840,16 @@ appView.addEventListener('submit', async (e) => {
 });
 
 appView.addEventListener('change', async (e) => {
-    if (!currentUserProfile || currentUserProfile.funcao === 'leitura') {
-        showAlertModal('Acesso Negado', 'Você não tem permissão para alterar dados.');
-        return;
+    if (e.target.classList.contains('pagamento-metodo')) {
+        const row = e.target.closest('.pagamento-row');
+        const parcelasInput = row.querySelector('.pagamento-parcelas');
+        if (e.target.value === 'Cartão de Crédito' || e.target.value === 'Boleto') {
+            parcelasInput.classList.remove('hidden');
+            parcelasInput.value = parcelasInput.value || 1;
+        } else {
+            parcelasInput.classList.add('hidden');
+            parcelasInput.value = '';
+        }
     }
     if (e.target.id === 'nfUploadInput') {
         const files = e.target.files;
