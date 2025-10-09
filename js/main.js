@@ -29,10 +29,22 @@ let notasCompraUnsubscribe = null;
 let allNotasCompraData = [];
 let currentPage = 1;
 const ITEMS_PER_PAGE = 15;
-let selectedMonthFilter = new Date().getMonth();
-let selectedYearFilter = new Date().getFullYear();
+
+// Filtros de Lançamentos
+let selectedMonthFilter = null;
+let selectedYearFilter = null;
 let searchTerm = '';
 let sortState = { key: 'dataEmissao', direction: 'desc' };
+
+// Filtros de Notas Fiscais
+let nfSelectedMonthFilter = null;
+let nfSelectedYearFilter = null;
+
+// Filtros de Variáveis
+let variaveisSelectedMonthFilter = null;
+let variaveisSelectedYearFilter = null;
+
+// Filtro de Dashboard
 const hoje = new Date();
 const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
 let dashboardStartDate = primeiroDiaDoMes;
@@ -40,7 +52,6 @@ let dashboardEndDate = hoje;
 
 // --- Seletores do DOM ---
 const loadingView = document.getElementById('loadingView');
-const loginContainer = document.getElementById('loginContainer');
 const loginForm = document.getElementById('loginForm');
 const logoutButton = document.getElementById('logoutButton');
 const appView = document.getElementById('appView');
@@ -66,7 +77,10 @@ onAuthStateChanged(auth, async (user) => {
             if (!clientesUnsubscribe) attachClientesListener();
             if (!notasCompraUnsubscribe) attachNotasCompraListener();
             
-            document.querySelector('[data-view="variaveisView"]').style.display = (currentUserProfile.funcao === 'padrao') ? 'none' : 'flex';
+            const variaveisNavLink = document.querySelector('[data-view="variaveisView"]');
+            if(variaveisNavLink) {
+                 variaveisNavLink.style.display = (currentUserProfile.funcao === 'padrao') ? 'none' : 'flex';
+            }
 
             showView('dashboardView');
         } else {
@@ -92,9 +106,8 @@ function attachLancamentosListener() {
     lancamentosUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allLancamentosData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl && currentViewEl.id === 'lancamentosListView') {
-            applyFilters();
-        }
+        if (currentViewEl?.id === 'lancamentosListView') applyFilters();
+        if (currentViewEl?.id === 'dashboardView') showView('dashboardView');
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os lançamentos."));
 }
 
@@ -103,9 +116,7 @@ function attachVariaveisListener() {
     variaveisUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allVariaveisData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl && currentViewEl.id === 'variaveisView') {
-            renderView('variaveisView');
-        }
+        if (currentViewEl?.id === 'variaveisView') applyVariaveisFilters();
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as variáveis."));
 }
 
@@ -114,8 +125,9 @@ function attachClientesListener() {
     clientesUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allClientesData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl && currentViewEl.id === 'clientesView') {
-            renderView('clientesView');
+        if (currentViewEl?.id === 'clientesView') {
+            const tableBody = document.getElementById('clientesTableBody');
+            if(tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
         }
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os clientes."));
 }
@@ -125,12 +137,7 @@ function attachNotasCompraListener() {
     notasCompraUnsubscribe = onSnapshot(q, (querySnapshot) => {
         allNotasCompraData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
         const currentViewEl = document.querySelector('.view[style*="block"]');
-        const currentForm = currentViewEl ? currentViewEl.querySelector('form') : null;
-        const dataId = currentForm ? currentForm.dataset.id : null;
-        
-        if (currentViewEl && (currentViewEl.id === 'notasFiscaisView' || currentViewEl.id === 'lancamentoDetailView')) {
-             showView(currentViewEl.id, dataId);
-        }
+        if (currentViewEl?.id === 'notasFiscaisView') applyNfFilters();
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as notas de compra."));
 }
 
@@ -143,47 +150,50 @@ async function showView(viewId, dataId = null) {
     }
     allViews.forEach(v => v.style.display = 'none');
     const viewContainer = document.getElementById(viewId);
-    if (viewContainer) viewContainer.style.display = 'block';
+    if (viewContainer) {
+        viewContainer.style.display = 'block';
+        viewContainer.dataset.id = dataId;
+    }
 
-    if (viewId === 'dashboardView') {
-        renderView(viewId);
-    } else if (viewId === 'variaveisView') {
-        renderView(viewId);
-    } else if (viewId === 'clientesView') {
-        renderView(viewId);
-    } else if (viewId === 'notasFiscaisView') {
-        renderView(viewId);
-        if (currentUserProfile.funcao !== 'leitura') document.getElementById('addItemBtn')?.click();
-    } else if (viewId === 'lancamentoDetailView' && dataId) {
-        renderView(viewId, { isLoading: true });
-        const docRef = doc(db, "lancamentos", dataId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            const lancamento = { firestoreId: docSnap.id, ...docSnap.data() };
-            const custosDaOs = allNotasCompraData.filter(nota => nota.osId === lancamento.os);
-            renderView(viewId, { lancamento, custosDaOs });
+    renderView(viewId, { isLoading: true });
+
+    try {
+        if (viewId === 'lancamentoDetailView' && dataId) {
+            const docRef = doc(db, "lancamentos", dataId);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const lancamento = { firestoreId: docSnap.id, ...docSnap.data() };
+                const custosDaOs = allNotasCompraData.filter(nota => nota.osId === lancamento.os);
+                renderView(viewId, { lancamento, custosDaOs });
+            } else {
+                showAlertModal("Erro", "Lançamento não encontrado.");
+                showView('lancamentosListView');
+            }
+        } else if (viewId === 'clienteDetailView' && dataId) {
+            const cliente = allClientesData.find(c => c.firestoreId === dataId);
+            if (cliente) {
+                renderView(viewId, cliente);
+            } else {
+                showAlertModal('Erro', 'Cliente não encontrado.');
+                showView('clientesView');
+            }
         } else {
-            showAlertModal("Erro", "Lançamento não encontrado.");
-            showView('lancamentosListView');
+             renderView(viewId);
+             if (viewId === 'lancamentosListView') populateFiltersAndApply();
+             if (viewId === 'notasFiscaisView') populateNfFiltersAndApply();
+             if (viewId === 'variaveisView') populateVariaveisFiltersAndApply();
+             
+             if (viewId === 'notasFiscaisView' && currentUserProfile.funcao !== 'leitura') {
+                setTimeout(() => document.getElementById('addItemBtn')?.click(), 100);
+            }
         }
-    } else if (viewId === 'clienteDetailView' && dataId) {
-        const cliente = allClientesData.find(c => c.firestoreId === dataId);
-        if (cliente) {
-            renderView(viewId, cliente);
-        } else {
-            showAlertModal('Erro', 'Cliente não encontrado.');
-            showView('clientesView');
-        }
-    } else if (viewId === 'lancamentosListView') {
-        renderView(viewId);
-        populateFiltersAndApply();
-    } else {
+    } catch(e) {
+        showAlertModal("Erro ao carregar a visão", e.message);
         renderView(viewId);
     }
 
-  navLinks.forEach(link => {
+    navLinks.forEach(link => {
         const linkView = link.dataset.view;
-        // Lógica aprimorada para saber que a tela de detalhe "pertence" à de lista
         const isActive = linkView === viewId ||
                          (linkView === 'lancamentosListView' && viewId === 'lancamentoDetailView') ||
                          (linkView === 'clientesView' && viewId === 'clienteDetailView');
@@ -361,6 +371,68 @@ function updateSortUI() {
     });
     // 4. Renderiza todos os novos ícones que foram adicionados
     lucide.createIcons();
+}
+function applyNfFilters() {
+    let filteredData = [...allNotasCompraData];
+    if (nfSelectedYearFilter !== null) {
+        filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getFullYear() === nfSelectedYearFilter);
+        if (nfSelectedMonthFilter !== null) {
+            filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getMonth() === nfSelectedMonthFilter);
+        }
+    }
+    filteredData.sort((a, b) => b.dataEmissao.toDate() - a.dataEmissao.toDate());
+    const tableBody = document.getElementById('notasCompraTableBody');
+    if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(filteredData, allLancamentosData);
+}
+
+function populateNfFiltersAndApply() {
+    const monthFilter = document.getElementById('nfMonthFilter');
+    const yearFilter = document.getElementById('nfYearFilter');
+    if (!monthFilter || !yearFilter) return;
+
+    const years = [...new Set(allNotasCompraData.map(l => l.dataEmissao?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
+    yearFilter.innerHTML = '<option value="">Todos os Anos</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
+    yearFilter.value = nfSelectedYearFilter === null ? '' : nfSelectedYearFilter;
+
+    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    monthFilter.innerHTML = '<option value="">Todos os Meses</option>' + monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
+    monthFilter.value = nfSelectedMonthFilter === null ? '' : nfSelectedMonthFilter;
+
+    monthFilter.onchange = () => { nfSelectedMonthFilter = monthFilter.value === '' ? null : parseInt(monthFilter.value); applyNfFilters(); };
+    yearFilter.onchange = () => { nfSelectedYearFilter = yearFilter.value === '' ? null : parseInt(yearFilter.value); applyNfFilters(); };
+    applyNfFilters();
+}
+
+// ADICIONADO: Funções de filtro para Variáveis
+function applyVariaveisFilters() {
+    let filteredData = [...allVariaveisData];
+    if (variaveisSelectedYearFilter !== null) {
+        filteredData = filteredData.filter(v => v.data?.toDate().getFullYear() === variaveisSelectedYearFilter);
+        if (variaveisSelectedMonthFilter !== null) {
+            filteredData = filteredData.filter(v => v.data?.toDate().getMonth() === variaveisSelectedMonthFilter);
+        }
+    }
+    filteredData.sort((a, b) => b.data.toDate() - a.data.toDate());
+    const tableBody = document.getElementById('variaveisTableBody');
+    if (tableBody) tableBody.innerHTML = createVariaveisTableRowsHTML(filteredData, currentUserProfile);
+}
+
+function populateVariaveisFiltersAndApply() {
+    const monthFilter = document.getElementById('variaveisMonthFilter');
+    const yearFilter = document.getElementById('variaveisYearFilter');
+    if (!monthFilter || !yearFilter) return;
+
+    const years = [...new Set(allVariaveisData.map(v => v.data?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
+    yearFilter.innerHTML = '<option value="">Todos os Anos</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
+    yearFilter.value = variaveisSelectedYearFilter === null ? '' : variaveisSelectedYearFilter;
+
+    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    monthFilter.innerHTML = '<option value="">Todos os Meses</option>' + monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
+    monthFilter.value = variaveisSelectedMonthFilter === null ? '' : variaveisSelectedMonthFilter;
+
+    monthFilter.onchange = () => { variaveisSelectedMonthFilter = monthFilter.value === '' ? null : parseInt(monthFilter.value); applyVariaveisFilters(); };
+    yearFilter.onchange = () => { variaveisSelectedYearFilter = yearFilter.value === '' ? null : parseInt(yearFilter.value); applyVariaveisFilters(); };
+    applyVariaveisFilters();
 }
 
 // --- Lógica de Relatórios e Backup ---
