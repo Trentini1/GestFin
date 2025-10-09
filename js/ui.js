@@ -505,6 +505,34 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
     </div>`;
 };
 
+export const createPagamentoRowHTML = (data = {}) => {
+    const rowId = `pagamento-row-${Date.now()}-${Math.random()}`;
+    const isParcelable = data.metodo === 'Cartão de Crédito' || data.metodo === 'Boleto';
+    return `
+        <div id="${rowId}" class="pagamento-row grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-5">
+                <select class="pagamento-metodo mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+                    <option value="PIX" ${data.metodo === 'PIX' ? 'selected' : ''}>PIX</option>
+                    <option value="Dinheiro" ${data.metodo === 'Dinheiro' ? 'selected' : ''}>Dinheiro</option>
+                    <option value="Cartão de Crédito" ${data.metodo === 'Cartão de Crédito' ? 'selected' : ''}>Cartão de Crédito</option>
+                    <option value="Cartão de Débito" ${data.metodo === 'Cartão de Débito' ? 'selected' : ''}>Cartão de Débito</option>
+                    <option value="Boleto" ${data.metodo === 'Boleto' ? 'selected' : ''}>Boleto</option>
+                    <option value="Cheque" ${data.metodo === 'Cheque' ? 'selected' : ''}>Cheque</option>
+                </select>
+            </div>
+            <div class="col-span-4">
+                <input type="number" step="0.01" placeholder="Valor" class="pagamento-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" value="${data.valor || ''}" required>
+            </div>
+            <div class="col-span-2">
+                <input type="number" placeholder="Parcelas" class="pagamento-parcelas mt-1 block w-full rounded-md border-slate-300 shadow-sm ${isParcelable ? '' : 'hidden'}" value="${data.parcelas || 1}">
+            </div>
+            <div class="col-span-1 text-right">
+                <button type="button" class="remove-pagamento-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </div>
+        </div>
+    `;
+};
+
 export const createNotasCompraTableRowsHTML = (notas, lancamentos) => {
     if (!notas.length) return '<tr><td colspan="5" class="text-center py-10 text-slate-500">Nenhuma nota fiscal de compra encontrada para os filtros.</td></tr>';
     
