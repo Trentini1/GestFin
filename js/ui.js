@@ -184,6 +184,56 @@ export const createLancamentoDetailHTML = (data, userProfile) => {
     const valorCofins = valorTotal * ((impostos.cofins || 0) / 100);
     const valorIcms = valorTotal * ((impostos.icms || 0) / 100);
     const totalImpostos = valorIss + valorPis + valorCofins + valorIcms;
+     const pagamentosHTML = (lancamento.pagamentos || []).map(p => `
+        <li class="flex justify-between items-center text-sm">
+            <span>${p.metodo}${p.parcelas > 1 ? ` (${p.parcelas}x)` : ''}</span>
+            <span class="font-medium">${formatCurrency(p.valor)}</span>
+        </li>
+    `).join('');
+
+    return `
+    <button class="back-to-list flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
+    <form id="editLancamentoForm" data-id="${lancamento.firestoreId}" class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto space-y-6">
+        <h2 class="text-2xl font-bold">${isReadOnly ? 'Detalhes do Lançamento' : 'Editar Lançamento'}</h2>
+        <fieldset ${isReadOnly ? 'disabled' : ''}>
+            {...} // Formulário de edição sem alterações na estrutura, o JS preencherá os pagamentos
+
+            <div class="pt-4 border-t">
+                <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento</h4>
+                <div id="pagamentos-container" class="space-y-2">
+                    </div>
+                ${!isReadOnly ? `
+                <button type="button" id="addPagamentoBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
+                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento
+                </button>
+                ` : ''}
+            </div>
+            </fieldset>
+        ${!isReadOnly ? `
+        <div class="flex justify-end pt-4 border-t">
+            <button type="button" id="deleteLancamentoBtn" class="text-red-600 hover:underline mr-auto">Excluir Lançamento</button>
+            <button type="submit" class="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button>
+        </div>
+        ` : ''}
+    </form>
+    
+    <div class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto mt-8">
+        <h3 class="text-xl font-bold mb-4">Resumo Financeiro</h3>
+        <div class="mb-6">
+            <h4 class="font-semibold text-slate-800 mb-2">Pagamentos Recebidos</h4>
+            <ul class="space-y-1 text-slate-600">
+                ${pagamentosHTML || '<li>Nenhuma forma de pagamento registrada.</li>'}
+            </ul>
+        </div>
+
+        <h4 class="font-semibold text-slate-800 mb-2">Análise da O.S.</h4>
+        ${custosDaOs.length > 0 ? `<div class="space-y-4">${custosDaOs.map(nota => `...`).join('')}</div>` : `<p class="text-slate-500">Nenhuma nota fiscal de compra foi vinculada a esta O.S. ainda.</p>`}
+        <div class="mt-6 pt-4 border-t-2 space-y-2">
+            {...} // Resto da análise financeira
+        </div>
+    </div>
+    `;
+};
     const resultadoFinal = valorTotal - totalCustos - totalImpostos;
 
     return `
