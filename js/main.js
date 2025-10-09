@@ -1,4 +1,4 @@
-// js/main.js
+// js/main.js (COMPLETO E ATUALIZADO)
 
 // Firebase SDK
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -14,7 +14,8 @@ import {
     showConfirmModal, closeModal, handleConfirm, renderPaginationControls, renderDashboardChart,
     renderNfPieChart, createVariaveisViewHTML, createVariaveisTableRowsHTML,
     createClientesViewHTML, createClientesTableRowsHTML, createClienteDetailHTML,
-    createNotasFiscaisViewHTML, createNotasCompraTableRowsHTML, createPagamentoRowHTML
+    createNotasFiscaisViewHTML, createNotasCompraTableRowsHTML, createPagamentoRowHTML,
+    createNotaCompraDetailHTML // <-- NOVA FUNÇÃO IMPORTADA
 } from './ui.js';
 
 const DEFAULT_COMISSION_RATE = 0.5;
@@ -148,15 +149,13 @@ async function showView(viewId, dataId = null) {
 
     try {
         if (viewId === 'lancamentoDetailView' && dataId) {
-            const docRef = doc(db, "lancamentos", dataId);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const lancamento = { firestoreId: docSnap.id, ...docSnap.data() };
+            const lancamento = allLancamentosData.find(l => l.firestoreId === dataId);
+            if(lancamento) {
                 const custosDaOs = allNotasCompraData.filter(nota => nota.osId === lancamento.os);
                 renderView(viewId, { lancamento, custosDaOs });
             } else {
-                showAlertModal("Erro", "Lançamento não encontrado.");
-                showView('lancamentosListView');
+                 showAlertModal("Erro", "Lançamento não encontrado.");
+                 showView('lancamentosListView');
             }
         } else if (viewId === 'clienteDetailView' && dataId) {
             const cliente = allClientesData.find(c => c.firestoreId === dataId);
@@ -166,7 +165,18 @@ async function showView(viewId, dataId = null) {
                 showAlertModal('Erro', 'Cliente não encontrado.');
                 showView('clientesView');
             }
-        } else {
+        } 
+        // NOVA LÓGICA: Carregar dados para a tela de edição de NF de Compra
+        else if (viewId === 'notaCompraDetailView' && dataId) {
+            const nota = allNotasCompraData.find(n => n.firestoreId === dataId);
+            if(nota) {
+                renderView(viewId, nota);
+            } else {
+                showAlertModal('Erro', 'Nota Fiscal de Compra não encontrada.');
+                showView('notasFiscaisView');
+            }
+        }
+        else {
             renderView(viewId);
             if (viewId === 'lancamentosListView') populateFiltersAndApply();
             if (viewId === 'notasFiscaisView') populateNfFiltersAndApply();
@@ -184,7 +194,8 @@ async function showView(viewId, dataId = null) {
         const linkView = link.dataset.view;
         const isActive = linkView === viewId ||
             (linkView === 'lancamentosListView' && viewId === 'lancamentoDetailView') ||
-            (linkView === 'clientesView' && viewId === 'clienteDetailView');
+            (linkView === 'clientesView' && viewId === 'clienteDetailView') ||
+            (linkView === 'notasFiscaisView' && viewId === 'notaCompraDetailView'); // NOVA CONDIÇÃO
 
         link.classList.toggle('text-indigo-600', isActive);
         link.classList.toggle('border-b-2', isActive);
@@ -230,6 +241,10 @@ function renderView(viewId, data = {}) {
         case 'clienteDetailView':
             html = createClienteDetailHTML(data, currentUserProfile);
             break;
+        // NOVO CASE: Renderizar a tela de edição de NF de Compra
+        case 'notaCompraDetailView':
+            html = createNotaCompraDetailHTML(data, allLancamentosData);
+            break;
     }
     viewContainer.innerHTML = html;
     lucide.createIcons();
@@ -242,6 +257,10 @@ function renderView(viewId, data = {}) {
     } else if (viewId === 'clientesView') {
         const tableBody = document.getElementById('clientesTableBody');
         if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
+    } 
+    // NOVO: Atualizar o sumário de pagamentos na tela de edição de NF
+    else if (viewId === 'notaCompraDetailView') {
+        updatePagamentosSummary('compra');
     }
 }
 
@@ -575,7 +594,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pagamentosModalSaveBtn')?.addEventListener('click', savePagamentosFromModal);
 });
 
-// CORREÇÃO: Listener de clique para o modal de pagamentos
 document.getElementById('pagamentosModal').addEventListener('click', (e) => {
     const target = e.target;
     if (target.closest('#addModalPagamentoBtn')) {
@@ -592,7 +610,7 @@ appView.addEventListener('click', async (e) => {
     if (!currentUserProfile) return;
     const isReadOnly = currentUserProfile.funcao === 'leitura';
     const actionElement = e.target.closest('button, .faturado-toggle');
-    const isAllowedForReadOnly = e.target.closest('.nav-link, .view-details, .back-to-list, .back-to-list-clientes, #exportPdfBtn, #exportCsvBtn, .sort-btn, #dashboardFilterBtn, #managePagamentosBtn, #managePagamentosCompraBtn');
+    const isAllowedForReadOnly = e.target.closest('.nav-link, .view-details, .back-to-list, .back-to-list-clientes, #exportPdfBtn, #exportCsvBtn, .sort-btn, #dashboardFilterBtn, #managePagamentosBtn, #managePagamentosCompraBtn, .edit-notacompra-btn, .back-to-list-notas');
 
     if (isReadOnly && actionElement && !isAllowedForReadOnly) {
         e.preventDefault();
@@ -617,6 +635,10 @@ appView.addEventListener('click', async (e) => {
     else if (target.closest('.back-to-list')) { showView('lancamentosListView'); }
     else if (target.closest('.edit-cliente-btn')) { showView('clienteDetailView', target.closest('.edit-cliente-btn').dataset.id); }
     else if (target.closest('.back-to-list-clientes')) { showView('clientesView'); }
+    // NOVA NAVEGAÇÃO
+    else if (target.closest('.edit-notacompra-btn')) { showView('notaCompraDetailView', target.closest('.edit-notacompra-btn').dataset.id); }
+    else if (target.closest('.back-to-list-notas')) { showView('notasFiscaisView'); }
+
     else if (target.id === 'dashboardFilterBtn') {
         const startDateValue = document.getElementById('dashboardStartDate').value;
         const endDateValue = document.getElementById('dashboardEndDate').value;
@@ -788,14 +810,12 @@ appView.addEventListener('submit', async (e) => {
             };
 
             if(isEdit) {
-                // ADIÇÃO: Salva quem editou e quando
                 data.editadoPor = currentUserProfile.nome;
                 data.editadoEm = Timestamp.now();
                 await updateDoc(doc(db, "lancamentos", form.dataset.id), data);
                 showAlertModal('Sucesso', 'Alterações salvas.');
                 showView('lancamentoDetailView', form.dataset.id);
             } else {
-                // ADIÇÃO: Salva quem criou e quando, e o status inicial de faturamento
                 data.criadoPor = currentUserProfile.nome;
                 data.criadoEm = Timestamp.now();
                 data.faturado = null;
@@ -807,7 +827,10 @@ appView.addEventListener('submit', async (e) => {
                 }
             }
         }
-        else if (form.id === 'addNotaCompraForm') {
+        else if (form.id === 'addNotaCompraForm' || form.id === 'editNotaCompraForm') {
+            const isEdit = form.id === 'editNotaCompraForm';
+            const prefix = isEdit ? 'edit' : 'new';
+            
             const pagamentosCompra = JSON.parse(form.querySelector('#hidden-pagamentos-data-compra').value || '[]');
             const itens = [];
             let valorTotal = 0;
@@ -820,35 +843,35 @@ appView.addEventListener('submit', async (e) => {
                     valorTotal += (quantidade * valor);
                 }
             });
+
             if (itens.length === 0) {
                 showAlertModal('Erro', 'Você precisa adicionar pelo menos um item válido.');
-                submitButton.disabled = false; return;
+                if (submitButton) submitButton.disabled = false; return;
             }
-            const impostosCompra = {
-                icms: parseFloat(form.querySelector('#newCompraImpostoIcms')?.value) || 0,
-                ipi: parseFloat(form.querySelector('#newCompraImpostoIpi')?.value) || 0,
-                pis: parseFloat(form.querySelector('#newCompraImpostoPis')?.value) || 0,
-                cofins: parseFloat(form.querySelector('#newCompraImpostoCofins')?.value) || 0,
-            };
-            const data = new Date(form.querySelector('#newNotaData').value + 'T12:00:00Z');
-            
-            await addDoc(collection(db, "notasCompra"), {
-                osId: form.querySelector('#newNotaOsId').value,
-                numeroNf: form.querySelector('#newNotaNumeroNf').value,
-                dataEmissao: Timestamp.fromDate(data),
-                chaveAcesso: form.querySelector('#newNotaChaveAcesso').value,
+
+            const data = {
+                osId: form.querySelector(`#${prefix}NotaOsId`).value,
+                numeroNf: form.querySelector(`#${prefix}NotaNumeroNf`).value,
+                dataEmissao: Timestamp.fromDate(new Date(form.querySelector(`#${prefix}NotaData`).value + 'T12:00:00Z')),
+                chaveAcesso: form.querySelector(`#${prefix}NotaChaveAcesso`).value,
+                comprador: form.querySelector(`#${prefix}NotaComprador`).value,
                 valorTotal: valorTotal,
                 itens: itens,
-                impostos: impostosCompra,
-                pagamentos: pagamentosCompra,
-                // ADIÇÃO: Salva o comprador selecionado
-                comprador: form.querySelector('#newNotaComprador').value 
-            });
-            form.reset();
-            const itensContainer = document.getElementById('itens-container');
-            if(itensContainer) itensContainer.innerHTML = '';
-            document.getElementById('addItemBtn')?.click();
-            showAlertModal('Sucesso!', 'Nota Fiscal de compra salva.');
+                pagamentos: pagamentosCompra
+            };
+
+            if (isEdit) {
+                await updateDoc(doc(db, "notasCompra", form.dataset.id), data);
+                showAlertModal('Sucesso!', 'Nota Fiscal de Compra atualizada.');
+                showView('notasFiscaisView');
+            } else {
+                await addDoc(collection(db, "notasCompra"), data);
+                form.reset();
+                const itensContainer = document.getElementById('itens-container');
+                if(itensContainer) itensContainer.innerHTML = '';
+                document.getElementById('addItemBtn')?.click();
+                showAlertModal('Sucesso!', 'Nota Fiscal de compra salva.');
+            }
         }
     } catch (error) {
         showAlertModal("Erro ao Salvar", error.message);
@@ -889,7 +912,6 @@ appView.addEventListener('change', async (e) => {
                     descricao: data.observacoes,
                     valorTotal, taxaComissao: 0.5, comissao: valorTotal * (0.5 / 100),
                     faturado: null, obs: `Analisado por IA a partir de ${file.name}`,
-                    // ADIÇÃO: Salva quem criou o lançamento via IA
                     criadoPor: currentUserProfile.nome,
                     criadoEm: Timestamp.now()
                 });
