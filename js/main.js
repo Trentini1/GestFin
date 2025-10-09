@@ -436,9 +436,128 @@ function populateVariaveisFiltersAndApply() {
 }
 
 // --- Lógica de Relatórios e Backup ---
-function generatePrintReport() { /* ... */ }
-function generateCsvReport() { /* ... */ }
-function generateBackupFile() { /* ... */ }
+Exato! Os botões voltaram, mas as funções que eles chamam estavam vazias, como "cascas" sem funcionalidade. Agora vamos adicionar a "inteligência" a cada um deles.
+
+O seu arquivo ui.js está perfeito, não precisa mexer nele. Todas as alterações serão no arquivo main.js.
+
+O que Vamos Fazer
+Exportar PDF: Criaremos uma função que gera uma tabela limpa com os dados filtrados e abre a janela de impressão do navegador (que tem a opção "Salvar como PDF").
+
+Exportar CSV: Criaremos uma função que converte os dados filtrados em um arquivo .csv, que pode ser aberto no Excel, Google Sheets, etc., e inicia o download.
+
+Fazer Backup: Criaremos uma função que pega todos os seus dados (lançamentos, clientes, etc.) e os salva em um único arquivo .json, que serve como um ponto de restauração seguro.
+
+Abaixo estão as implementações completas dessas funções. Para facilitar, no final, vou te dar o arquivo main.js completo já com tudo isso incluído.
+
+1. Exportar para PDF (generatePrintReport)
+Esta função cria uma nova janela com uma tabela estilizada e chama o comando de impressão.
+
+JavaScript
+
+function generatePrintReport() {
+    const dataToPrint = getFilteredData(); // Pega os dados já filtrados na tela
+    if (dataToPrint.length === 0) {
+        showAlertModal('Aviso', 'Não há dados para imprimir.');
+        return;
+    }
+
+    const reportWindow = window.open('', '', 'height=800,width=1200');
+    reportWindow.document.write('<html><head><title>Relatório de Lançamentos</title>');
+    reportWindow.document.write(`
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            h1 { text-align: center; }
+        </style>
+    `);
+    reportWindow.document.write('</head><body>');
+    reportWindow.document.write(`<h1>Relatório de Lançamentos</h1>`);
+    reportWindow.document.write(`<p>Gerado em: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}</p>`);
+    reportWindow.document.write('<table><thead><tr>');
+    reportWindow.document.write('<th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th>');
+    reportWindow.document.write('</tr></thead><tbody>');
+
+    dataToPrint.forEach(l => {
+        reportWindow.document.write('<tr>');
+        reportWindow.document.write(`<td>${l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || ''}</td>`);
+        reportWindow.document.write(`<td>${l.cliente || ''}</td>`);
+        reportWindow.document.write(`<td>${l.numeroNf || 'NT'}</td>`);
+        reportWindow.document.write(`<td>${l.os || ''}</td>`);
+        reportWindow.document.write(`<td>${formatCurrency(getGiroTotal(l))}</td>`);
+        reportWindow.document.write(`<td>${currentUserProfile.funcao !== 'padrao' ? formatCurrency(l.comissao) : 'N/A'}</td>`);
+        reportWindow.document.write(`<td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td>`);
+        reportWindow.document.write('</tr>');
+    });
+
+    reportWindow.document.write('</tbody></table></body></html>');
+    reportWindow.document.close();
+    reportWindow.focus(); 
+    reportWindow.print();
+}
+function generateCsvReport() {
+    const dataToExport = getFilteredData();
+    if (dataToExport.length === 0) {
+        showAlertModal('Aviso', 'Não há dados para exportar.');
+        return;
+    }
+
+    // Função auxiliar para garantir que o texto com vírgulas não quebre o CSV
+    const escapeCsv = (str) => `"${(str || '').toString().replace(/"/g, '""')}"`;
+
+    const headers = ['Data Emissao', 'Cliente', 'Numero NF', 'O.S/PC', 'Descricao', 'Valor Total', 'Comissao', 'Data Faturamento', 'Observacoes'];
+    
+    const csvRows = [headers.join(',')]; // Inicia com os cabeçalhos
+
+    dataToExport.forEach(l => {
+        const row = [
+            l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || '',
+            l.cliente || '',
+            l.numeroNf || 'NT',
+            l.os || '',
+            l.descricao || '',
+            getGiroTotal(l) || 0,
+            currentUserProfile.funcao !== 'padrao' ? (l.comissao || 0) : 'N/A',
+            l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente',
+            l.obs || ''
+        ];
+        csvRows.push(row.map(escapeCsv).join(','));
+    });
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); // \uFEFF para Excel entender acentos
+    const link = document.createElement("a");
+
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `relatorio_lancamentos_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+function generateBackupFile() {
+    const backupData = {
+        lancamentos: allLancamentosData,
+        clientes: allClientesData,
+        variaveis: allVariaveisData,
+        notasCompra: allNotasCompraData,
+        backupDate: new Date().toISOString()
+    };
+
+    const jsonString = JSON.stringify(backupData, null, 2); // O 'null, 2' formata o arquivo para ficar legível
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const link = document.createElement("a");
+
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `backup_gestao_pro_${new Date().toISOString().split('T')[0]}.json`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
 async function handleRestoreFile(file) { /* ... */ }
 
 // --- Event Listeners Globais ---
