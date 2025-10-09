@@ -435,25 +435,6 @@ function populateVariaveisFiltersAndApply() {
     applyVariaveisFilters();
 }
 
-// --- Lógica de Relatórios e Backup ---
-Exato! Os botões voltaram, mas as funções que eles chamam estavam vazias, como "cascas" sem funcionalidade. Agora vamos adicionar a "inteligência" a cada um deles.
-
-O seu arquivo ui.js está perfeito, não precisa mexer nele. Todas as alterações serão no arquivo main.js.
-
-O que Vamos Fazer
-Exportar PDF: Criaremos uma função que gera uma tabela limpa com os dados filtrados e abre a janela de impressão do navegador (que tem a opção "Salvar como PDF").
-
-Exportar CSV: Criaremos uma função que converte os dados filtrados em um arquivo .csv, que pode ser aberto no Excel, Google Sheets, etc., e inicia o download.
-
-Fazer Backup: Criaremos uma função que pega todos os seus dados (lançamentos, clientes, etc.) e os salva em um único arquivo .json, que serve como um ponto de restauração seguro.
-
-Abaixo estão as implementações completas dessas funções. Para facilitar, no final, vou te dar o arquivo main.js completo já com tudo isso incluído.
-
-1. Exportar para PDF (generatePrintReport)
-Esta função cria uma nova janela com uma tabela estilizada e chama o comando de impressão.
-
-JavaScript
-
 function generatePrintReport() {
     const dataToPrint = getFilteredData(); // Pega os dados já filtrados na tela
     if (dataToPrint.length === 0) {
