@@ -1,3 +1,5 @@
+// js/main.js
+
 // Firebase SDK
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { collection, doc, addDoc, getDoc, deleteDoc, onSnapshot, query, updateDoc, writeBatch, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -573,6 +575,19 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pagamentosModalSaveBtn')?.addEventListener('click', savePagamentosFromModal);
 });
 
+// CORREÇÃO: Listener de clique para o modal de pagamentos
+document.getElementById('pagamentosModal').addEventListener('click', (e) => {
+    const target = e.target;
+    if (target.closest('#addModalPagamentoBtn')) {
+         document.getElementById('modal-pagamentos-list').insertAdjacentHTML('beforeend', createPagamentoRowHTML());
+         lucide.createIcons();
+    }
+    if (target.closest('.remove-pagamento-btn')) {
+        target.closest('.pagamento-row').remove();
+    }
+});
+
+
 appView.addEventListener('click', async (e) => {
     if (!currentUserProfile) return;
     const isReadOnly = currentUserProfile.funcao === 'leitura';
@@ -693,14 +708,7 @@ appView.addEventListener('click', async (e) => {
         }
     }
     else if (target.id === 'managePagamentosBtn' || target.id === 'managePagamentosCompraBtn') {
-        openPagamentosModal(e.target.dataset.modalTarget);
-    }
-    else if (target.id === 'addModalPagamentoBtn') {
-        document.getElementById('modal-pagamentos-list').insertAdjacentHTML('beforeend', createPagamentoRowHTML());
-        lucide.createIcons();
-    }
-    else if (target.closest('.remove-pagamento-btn')) {
-        target.closest('.pagamento-row').remove();
+        openPagamentosModal(e.target.dataset.modalTarget || 'lancamento');
     }
 });
 
@@ -777,13 +785,20 @@ appView.addEventListener('submit', async (e) => {
                 obs: form.querySelector(`#${prefix}Obs`).value,
                 impostos: impostos,
                 pagamentos: pagamentos,
-                ...(isEdit ? {} : { faturado: null })
             };
+
             if(isEdit) {
+                // ADIÇÃO: Salva quem editou e quando
+                data.editadoPor = currentUserProfile.nome;
+                data.editadoEm = Timestamp.now();
                 await updateDoc(doc(db, "lancamentos", form.dataset.id), data);
                 showAlertModal('Sucesso', 'Alterações salvas.');
                 showView('lancamentoDetailView', form.dataset.id);
             } else {
+                // ADIÇÃO: Salva quem criou e quando, e o status inicial de faturamento
+                data.criadoPor = currentUserProfile.nome;
+                data.criadoEm = Timestamp.now();
+                data.faturado = null;
                 await addDoc(collection(db, "lancamentos"), data);
                 const formContainer = document.getElementById('formContainer');
                 if (formContainer) {
@@ -810,12 +825,13 @@ appView.addEventListener('submit', async (e) => {
                 submitButton.disabled = false; return;
             }
             const impostosCompra = {
-                icms: parseFloat(form.querySelector('#newCompraImpostoIcms').value) || 0,
-                ipi: parseFloat(form.querySelector('#newCompraImpostoIpi').value) || 0,
-                pis: parseFloat(form.querySelector('#newCompraImpostoPis').value) || 0,
-                cofins: parseFloat(form.querySelector('#newCompraImpostoCofins').value) || 0,
+                icms: parseFloat(form.querySelector('#newCompraImpostoIcms')?.value) || 0,
+                ipi: parseFloat(form.querySelector('#newCompraImpostoIpi')?.value) || 0,
+                pis: parseFloat(form.querySelector('#newCompraImpostoPis')?.value) || 0,
+                cofins: parseFloat(form.querySelector('#newCompraImpostoCofins')?.value) || 0,
             };
             const data = new Date(form.querySelector('#newNotaData').value + 'T12:00:00Z');
+            
             await addDoc(collection(db, "notasCompra"), {
                 osId: form.querySelector('#newNotaOsId').value,
                 numeroNf: form.querySelector('#newNotaNumeroNf').value,
@@ -824,7 +840,9 @@ appView.addEventListener('submit', async (e) => {
                 valorTotal: valorTotal,
                 itens: itens,
                 impostos: impostosCompra,
-                pagamentos: pagamentosCompra
+                pagamentos: pagamentosCompra,
+                // ADIÇÃO: Salva o comprador selecionado
+                comprador: form.querySelector('#newNotaComprador').value 
             });
             form.reset();
             const itensContainer = document.getElementById('itens-container');
@@ -870,7 +888,10 @@ appView.addEventListener('change', async (e) => {
                     os: os_pc,
                     descricao: data.observacoes,
                     valorTotal, taxaComissao: 0.5, comissao: valorTotal * (0.5 / 100),
-                    faturado: null, obs: `Analisado por IA a partir de ${file.name}`
+                    faturado: null, obs: `Analisado por IA a partir de ${file.name}`,
+                    // ADIÇÃO: Salva quem criou o lançamento via IA
+                    criadoPor: currentUserProfile.nome,
+                    criadoEm: Timestamp.now()
                 });
                 successCount++;
             } catch (error) {
