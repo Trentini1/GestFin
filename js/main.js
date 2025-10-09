@@ -179,8 +179,13 @@ async function showView(viewId, dataId = null) {
         renderView(viewId);
     }
 
-    navLinks.forEach(link => {
-        const isActive = link.dataset.view === viewId;
+  navLinks.forEach(link => {
+        const linkView = link.dataset.view;
+        // Lógica aprimorada para saber que a tela de detalhe "pertence" à de lista
+        const isActive = linkView === viewId ||
+                         (linkView === 'lancamentosListView' && viewId === 'lancamentoDetailView') ||
+                         (linkView === 'clientesView' && viewId === 'clienteDetailView');
+
         link.classList.toggle('text-indigo-600', isActive);
         link.classList.toggle('border-b-2', isActive);
         link.classList.toggle('border-indigo-600', isActive);
