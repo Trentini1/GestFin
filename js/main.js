@@ -341,14 +341,23 @@ function populateFiltersAndApply() {
 
 function updateSortUI() {
     document.querySelectorAll('.sort-btn').forEach(btn => {
-        const key = btn.dataset.key;
-        const icon = btn.querySelector('i');
-        if (key === sortState.key) {
-            icon.setAttribute('data-lucide', sortState.direction === 'asc' ? 'arrow-up' : 'arrow-down');
-        } else {
-            icon.setAttribute('data-lucide', 'arrow-down-up');
+        // 1. Remove o ícone SVG antigo, se existir
+        const existingIcon = btn.querySelector('svg');
+        if (existingIcon) {
+            existingIcon.remove();
         }
+
+        // 2. Define qual o nome do novo ícone
+        const key = btn.dataset.key;
+        let iconName = 'arrow-down-up';
+        if (key === sortState.key) {
+            iconName = sortState.direction === 'asc' ? 'arrow-up' : 'arrow-down';
+        }
+
+        // 3. Adiciona a nova tag <i> de volta ao botão
+        btn.insertAdjacentHTML('beforeend', `<i data-lucide="${iconName}" class="h-4 w-4"></i>`);
     });
+    // 4. Renderiza todos os novos ícones que foram adicionados
     lucide.createIcons();
 }
 
