@@ -70,7 +70,6 @@ export const createLancamentosListHTML = (userProfile) => {
             </table>
         </div>
         <div id="pagination-controls" class="flex justify-between items-center text-sm"></div>
-
         <div class="mt-8 bg-white p-6 rounded-lg shadow">
             <h3 class="text-lg font-medium mb-4">Exportar Relatório</h3>
             <div class="flex space-x-4">
@@ -126,7 +125,14 @@ export const createNovoLancamentoFormHTML = (userProfile) => {
                 <input type="number" step="0.01" id="newValorTotal" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
             </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="pt-4 border-t">
+            <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento</h4>
+            <div id="pagamentos-container" class="space-y-2"></div>
+            <button type="button" id="addPagamentoBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
+                <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento
+            </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
              <div class="md:col-span-2">
                 <label for="newObs" class="block text-sm font-medium text-slate-700">Observação</label>
                 <textarea id="newObs" rows="2" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></textarea>
@@ -137,15 +143,6 @@ export const createNovoLancamentoFormHTML = (userProfile) => {
                 <input type="number" step="0.01" id="newTaxaComissao" value="${DEFAULT_COMISSION_RATE}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
             </div>
             ` : ''}
-        </div>
-        <div class="pt-4 border-t">
-            <h4 class="text-md font-medium text-slate-700">Impostos sobre a Venda (se houver)</h4>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
-                <div><label class="block text-sm font-medium text-slate-700">ISS (%)</label><input type="number" step="0.01" id="newImpostoIss" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div><label class="block text-sm font-medium text-slate-700">PIS (%)</label><input type="number" step="0.01" id="newImpostoPis" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div><label class="block text-sm font-medium text-slate-700">COFINS (%)</label><input type="number" step="0.01" id="newImpostoCofins" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div><label class="block text-sm font-medium text-slate-700">ICMS (%)</label><input type="number" step="0.01" id="newImpostoIcms" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            </div>
         </div>
         <div class="flex justify-end gap-3 pt-4 border-t">
           <button type="button" id="cancelNewLancamento" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Cancelar</button>
@@ -184,57 +181,14 @@ export const createLancamentoDetailHTML = (data, userProfile) => {
     const valorCofins = valorTotal * ((impostos.cofins || 0) / 100);
     const valorIcms = valorTotal * ((impostos.icms || 0) / 100);
     const totalImpostos = valorIss + valorPis + valorCofins + valorIcms;
-     const pagamentosHTML = (lancamento.pagamentos || []).map(p => `
+    const resultadoFinal = valorTotal - totalCustos - totalImpostos;
+
+    const pagamentosHTML = (lancamento.pagamentos || []).map(p => `
         <li class="flex justify-between items-center text-sm">
             <span>${p.metodo}${p.parcelas > 1 ? ` (${p.parcelas}x)` : ''}</span>
             <span class="font-medium">${formatCurrency(p.valor)}</span>
         </li>
     `).join('');
-
-    return `
-    <button class="back-to-list flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
-    <form id="editLancamentoForm" data-id="${lancamento.firestoreId}" class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto space-y-6">
-        <h2 class="text-2xl font-bold">${isReadOnly ? 'Detalhes do Lançamento' : 'Editar Lançamento'}</h2>
-        <fieldset ${isReadOnly ? 'disabled' : ''}>
-            {...} // Formulário de edição sem alterações na estrutura, o JS preencherá os pagamentos
-
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento</h4>
-                <div id="pagamentos-container" class="space-y-2">
-                    </div>
-                ${!isReadOnly ? `
-                <button type="button" id="addPagamentoBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
-                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento
-                </button>
-                ` : ''}
-            </div>
-            </fieldset>
-        ${!isReadOnly ? `
-        <div class="flex justify-end pt-4 border-t">
-            <button type="button" id="deleteLancamentoBtn" class="text-red-600 hover:underline mr-auto">Excluir Lançamento</button>
-            <button type="submit" class="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button>
-        </div>
-        ` : ''}
-    </form>
-    
-    <div class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto mt-8">
-        <h3 class="text-xl font-bold mb-4">Resumo Financeiro</h3>
-        <div class="mb-6">
-            <h4 class="font-semibold text-slate-800 mb-2">Pagamentos Recebidos</h4>
-            <ul class="space-y-1 text-slate-600">
-                ${pagamentosHTML || '<li>Nenhuma forma de pagamento registrada.</li>'}
-            </ul>
-        </div>
-
-        <h4 class="font-semibold text-slate-800 mb-2">Análise da O.S.</h4>
-        ${custosDaOs.length > 0 ? `<div class="space-y-4">${custosDaOs.map(nota => `...`).join('')}</div>` : `<p class="text-slate-500">Nenhuma nota fiscal de compra foi vinculada a esta O.S. ainda.</p>`}
-        <div class="mt-6 pt-4 border-t-2 space-y-2">
-            {...} // Resto da análise financeira
-        </div>
-    </div>
-    `;
-};
-    const resultadoFinal = valorTotal - totalCustos - totalImpostos;
 
     return `
     <button class="back-to-list flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
@@ -251,20 +205,20 @@ export const createLancamentoDetailHTML = (data, userProfile) => {
                 <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Motor</label><input type="text" id="editDescricao" value="${lancamento.descricao || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
                 <div><label class="block text-sm font-medium text-slate-700">Valor Total</label><input type="number" step="0.01" id="editValorTotal" value="${valorTotal}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Observação</label><textarea id="editObs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100">${lancamento.obs || ''}</textarea></div>
-                ${userProfile.funcao !== 'padrao' ? `
-                <div><label class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label><input type="number" step="0.01" id="editTaxaComissao" value="${lancamento.taxaComissao || DEFAULT_COMISSION_RATE}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
+            <div class="pt-4 border-t">
+                <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento</h4>
+                <div id="pagamentos-container" class="space-y-2"></div>
+                ${!isReadOnly ? `
+                <button type="button" id="addPagamentoBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
+                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento
+                </button>
                 ` : ''}
             </div>
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium">Impostos sobre a Venda/Serviço</h4>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
-                    <div><label class="block text-sm font-medium text-slate-700">ISS (%)</label><input type="number" step="0.01" id="editImpostoIss" value="${impostos.iss || ''}" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                    <div><label class="block text-sm font-medium text-slate-700">PIS (%)</label><input type="number" step="0.01" id="editImpostoPis" value="${impostos.pis || ''}" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                    <div><label class="block text-sm font-medium text-slate-700">COFINS (%)</label><input type="number" step="0.01" id="editImpostoCofins" value="${impostos.cofins || ''}" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                    <div><label class="block text-sm font-medium text-slate-700">ICMS (%)</label><input type="number" step="0.01" id="editImpostoIcms" value="${impostos.icms || ''}" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
+                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Observação</label><textarea id="editObs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100">${lancamento.obs || ''}</textarea></div>
+                ${userProfile.funcao !== 'padrao' ? `
+                <div><label class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label><input type="number" step="0.01" id="editTaxaComissao" value="${lancamento.taxaComissao ?? DEFAULT_COMISSION_RATE}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
+                ` : ''}
             </div>
         </fieldset>
         ${!isReadOnly ? `
@@ -275,7 +229,14 @@ export const createLancamentoDetailHTML = (data, userProfile) => {
         ` : ''}
     </form>
     <div class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto mt-8">
-        <h3 class="text-xl font-bold mb-4">Análise Financeira da O.S.</h3>
+        <h3 class="text-xl font-bold mb-4">Resumo Financeiro</h3>
+        <div class="mb-6">
+            <h4 class="font-semibold text-slate-800 mb-2">Pagamentos Recebidos</h4>
+            <ul class="space-y-1 text-slate-600">
+                ${pagamentosHTML || '<li>Nenhuma forma de pagamento registrada.</li>'}
+            </ul>
+        </div>
+        <h4 class="font-semibold text-slate-800 mb-2">Análise da O.S.</h4>
         ${custosDaOs.length > 0 ? `<div class="space-y-4">${custosDaOs.map(nota => `<div class="border p-4 rounded-md bg-slate-50"><p class="font-semibold">NF de Compra: ${nota.numeroNf} <span class="font-normal text-slate-500">- ${nota.dataEmissao.toDate().toLocaleDateString('pt-BR')}</span></p><ul class="list-disc list-inside mt-2 text-sm text-slate-600">${nota.itens.map(item => `<li>${item.quantidade || 1}x ${item.descricao}: <span class="font-medium">${formatCurrency(item.valor * (item.quantidade || 1))}</span></li>`).join('')}</ul></div>`).join('')}</div>` : `<p class="text-slate-500">Nenhuma nota fiscal de compra foi vinculada a esta O.S. ainda.</p>`}
         <div class="mt-6 pt-4 border-t-2 space-y-2">
             <div class="flex justify-between items-center text-lg"><span class="font-medium text-slate-600">Total de Custos:</span><span class="font-bold text-red-600">${formatCurrency(totalCustos)}</span></div>
@@ -310,7 +271,6 @@ export const createVariaveisViewHTML = (userProfile) => {
                 <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Variável</button>
             </div>
         </form>
-
         <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
             <h3 class="text-lg font-medium">Histórico de Variáveis</h3>
             <div class="flex items-center gap-4">
@@ -324,7 +284,6 @@ export const createVariaveisViewHTML = (userProfile) => {
                 </div>
             </div>
         </div>
-
         <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
             <table class="min-w-full divide-y divide-slate-200">
                 <thead class="bg-slate-50">
@@ -494,6 +453,13 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
                 </div>
             </div>
             <div class="pt-4 border-t">
+                <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento da Compra</h4>
+                <div id="pagamentos-container-compra" class="space-y-2"></div>
+                <button type="button" id="addPagamentoCompraBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
+                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento
+                </button>
+            </div>
+            <div class="pt-4 border-t">
                 <h4 class="text-md font-medium mb-2">Itens da Nota</h4>
                 <div class="grid grid-cols-12 gap-x-2 gap-y-1 text-sm font-medium text-slate-600 px-1">
                     <div class="col-span-6">Descrição do item</div>
@@ -509,7 +475,6 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
                 <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Nota Fiscal</button>
             </div>
         </form>
-        
         <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
             <h3 class="text-lg font-medium">Histórico de Notas de Compra</h3>
             <div class="flex items-center gap-4">
@@ -523,7 +488,6 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
                 </div>
             </div>
         </div>
-
         <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
             <table class="min-w-full divide-y divide-slate-200">
                 <thead class="bg-slate-50">
