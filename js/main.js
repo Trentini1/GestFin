@@ -205,18 +205,60 @@ async function showView(viewId, dataId = null) {
     });
 }
 
-function renderView(viewId, data) {
+function createPagamentoRow(containerId, data = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const rowId = `pagamento-row-${Date.now()}`;
+    const html = `
+        <div id="${rowId}" class="pagamento-row grid grid-cols-12 gap-2 items-center">
+            <div class="col-span-5">
+                <select class="pagamento-metodo mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+                    <option value="PIX">PIX</option>
+                    <option value="Dinheiro">Dinheiro</option>
+                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                    <option value="Cartão de Débito">Cartão de Débito</option>
+                    <option value="Boleto">Boleto</option>
+                    <option value="Cheque">Cheque</option>
+                </select>
+            </div>
+            <div class="col-span-4">
+                <input type="number" step="0.01" placeholder="Valor" class="pagamento-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+            </div>
+            <div class="col-span-2">
+                <input type="number" placeholder="Parcelas" class="pagamento-parcelas mt-1 block w-full rounded-md border-slate-300 shadow-sm hidden">
+            </div>
+            <div class="col-span-1 text-right">
+                <button type="button" class="remove-pagamento-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </div>
+        </div>
+    `;
+    container.insertAdjacentHTML('beforeend', html);
+    lucide.createIcons();
+    
+    const newRow = document.getElementById(rowId);
+    if (data.metodo) newRow.querySelector('.pagamento-metodo').value = data.metodo;
+    if (data.valor) newRow.querySelector('.pagamento-valor').value = data.valor;
+    if (data.parcelas) {
+        const parcelasInput = newRow.querySelector('.pagamento-parcelas');
+        parcelasInput.value = data.parcelas;
+        if (data.metodo === 'Cartão de Crédito' || data.metodo === 'Boleto') {
+            parcelasInput.classList.remove('hidden');
+        }
+    }
+}
+
+function renderView(viewId, data = {}) {
     const viewContainer = document.getElementById(viewId);
     if (!viewContainer) return;
-    let html = '';
     
-    if (data?.isLoading) {
+    if (data.isLoading) {
         viewContainer.innerHTML = `<div class="flex items-center justify-center h-96"><div class="loader"></div></div>`;
-        lucide.createIcons();
         return;
     }
 
-     switch (viewId) {
+    let html = '';
+    switch (viewId) {
         case 'dashboardView':
             const endDateFinal = new Date(dashboardEndDate);
             endDateFinal.setHours(23, 59, 59, 999);
@@ -246,8 +288,19 @@ function renderView(viewId, data) {
     }
     viewContainer.innerHTML = html;
     lucide.createIcons();
-     if (viewId === 'dashboardView') {
+    
+    if (viewId === 'dashboardView') {
         renderDashboardComponents();
+    } else if (viewId === 'lancamentoDetailView' && data.lancamento) {
+        const pagamentos = data.lancamento.pagamentos || [];
+        if (pagamentos.length > 0) {
+            pagamentos.forEach(p => createPagamentoRow('pagamentos-container', p));
+        } else if (currentUserProfile.funcao !== 'leitura') {
+             createPagamentoRow('pagamentos-container');
+        }
+    } else if (viewId === 'clientesView') {
+        const tableBody = document.getElementById('clientesTableBody');
+        if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
     }
 }
 
@@ -256,25 +309,20 @@ function renderDashboardComponents() {
     const endDateFinal = new Date(dashboardEndDate);
     endDateFinal.setHours(23, 59, 59, 999);
     const dashboardLancamentos = allLancamentosData.filter(l => l.dataEmissao?.toDate() >= dashboardStartDate && l.dataEmissao?.toDate() <= endDateFinal);
-    
     renderDashboardChart(allLancamentosData);
     renderNfPieChart(dashboardLancamentos);
     document.querySelectorAll('.dashboard-value').forEach(el => animateCountUp(el, parseFloat(el.dataset.value)));
 }
 
-// --- Lógica de Filtros, Ordenação e Paginação ---
+// --- Lógica de Filtros e Paginação ---
 function getFilteredData() {
     let filtered = [...allLancamentosData];
-
-    // Filtro de Mês/Ano
-    if (selectedMonthFilter !== null && selectedYearFilter !== null) {
-        filtered = filtered.filter(l => {
-            const data = l.dataEmissao?.toDate();
-            return data && data.getMonth() === selectedMonthFilter && data.getFullYear() === selectedYearFilter;
-        });
+    if (selectedYearFilter !== null) {
+        filtered = filtered.filter(l => l.dataEmissao?.toDate().getFullYear() === selectedYearFilter);
     }
-
-    // Filtro de Busca
+    if (selectedMonthFilter !== null) {
+        filtered = filtered.filter(l => l.dataEmissao?.toDate().getMonth() === selectedMonthFilter);
+    }
     if (searchTerm) {
         const lowerCaseSearch = searchTerm.toLowerCase();
         filtered = filtered.filter(l =>
@@ -283,22 +331,17 @@ function getFilteredData() {
             l.os?.toLowerCase().includes(lowerCaseSearch)
         );
     }
-
-    // Ordenação
     filtered.sort((a, b) => {
         let valA = a[sortState.key];
         let valB = b[sortState.key];
-
         if (sortState.key === 'dataEmissao') {
             valA = valA?.toDate() || 0;
             valB = valB?.toDate() || 0;
         }
-
         if (valA < valB) return sortState.direction === 'asc' ? -1 : 1;
         if (valA > valB) return sortState.direction === 'asc' ? 1 : -1;
         return 0;
     });
-
     return filtered;
 }
 
@@ -307,16 +350,13 @@ function applyFilters() {
     const totalItems = filteredData.length;
     const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
     currentPage = Math.max(1, Math.min(currentPage, totalPages));
-
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     const end = start + ITEMS_PER_PAGE;
     const paginatedData = filteredData.slice(start, end);
-
     const tableBody = document.getElementById('lancamentosTableBody');
     if (tableBody) {
         tableBody.innerHTML = createLancamentosTableRowsHTML(paginatedData, currentUserProfile);
     }
-    
     renderPaginationControls(currentPage, totalItems, totalPages, (direction) => {
         if (direction === 'prev') currentPage--;
         if (direction === 'next') currentPage++;
@@ -331,54 +371,43 @@ function populateFiltersAndApply() {
     const searchInput = document.getElementById('searchInput');
     if (!monthFilter || !yearFilter || !searchInput) return;
 
-    // Popula Anos
     const years = [...new Set(allLancamentosData.map(l => l.dataEmissao?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
-    yearFilter.innerHTML = years.map(year => `<option value="${year}">${year}</option>`).join('');
-    if (years.includes(selectedYearFilter)) {
-        yearFilter.value = selectedYearFilter;
-    }
+    yearFilter.innerHTML = '<option value="">Todos os Anos</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
+    yearFilter.value = selectedYearFilter === null ? '' : selectedYearFilter;
 
-    // Popula Meses
     const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-    monthFilter.innerHTML = monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
-    monthFilter.value = selectedMonthFilter;
+    monthFilter.innerHTML = '<option value="">Todos os Meses</option>' + monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
+    monthFilter.value = selectedMonthFilter === null ? '' : selectedMonthFilter;
 
-    // Adiciona Event Listeners
-    monthFilter.onchange = () => { selectedMonthFilter = parseInt(monthFilter.value); currentPage = 1; applyFilters(); };
-    yearFilter.onchange = () => { selectedYearFilter = parseInt(yearFilter.value); currentPage = 1; applyFilters(); };
+    monthFilter.onchange = () => { selectedMonthFilter = monthFilter.value === '' ? null : parseInt(monthFilter.value); currentPage = 1; applyFilters(); };
+    yearFilter.onchange = () => { selectedYearFilter = yearFilter.value === '' ? null : parseInt(yearFilter.value); currentPage = 1; applyFilters(); };
     searchInput.oninput = () => { searchTerm = searchInput.value; currentPage = 1; applyFilters(); };
-
     applyFilters();
 }
 
 function updateSortUI() {
     document.querySelectorAll('.sort-btn').forEach(btn => {
-        // 1. Remove o ícone SVG antigo, se existir
         const existingIcon = btn.querySelector('svg');
         if (existingIcon) {
             existingIcon.remove();
         }
-
-        // 2. Define qual o nome do novo ícone
         const key = btn.dataset.key;
         let iconName = 'arrow-down-up';
         if (key === sortState.key) {
             iconName = sortState.direction === 'asc' ? 'arrow-up' : 'arrow-down';
         }
-
-        // 3. Adiciona a nova tag <i> de volta ao botão
         btn.insertAdjacentHTML('beforeend', `<i data-lucide="${iconName}" class="h-4 w-4"></i>`);
     });
-    // 4. Renderiza todos os novos ícones que foram adicionados
     lucide.createIcons();
 }
+
 function applyNfFilters() {
     let filteredData = [...allNotasCompraData];
     if (nfSelectedYearFilter !== null) {
         filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getFullYear() === nfSelectedYearFilter);
-        if (nfSelectedMonthFilter !== null) {
-            filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getMonth() === nfSelectedMonthFilter);
-        }
+    }
+    if (nfSelectedMonthFilter !== null) {
+        filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getMonth() === nfSelectedMonthFilter);
     }
     filteredData.sort((a, b) => b.dataEmissao.toDate() - a.dataEmissao.toDate());
     const tableBody = document.getElementById('notasCompraTableBody');
@@ -403,14 +432,13 @@ function populateNfFiltersAndApply() {
     applyNfFilters();
 }
 
-// ADICIONADO: Funções de filtro para Variáveis
 function applyVariaveisFilters() {
     let filteredData = [...allVariaveisData];
     if (variaveisSelectedYearFilter !== null) {
         filteredData = filteredData.filter(v => v.data?.toDate().getFullYear() === variaveisSelectedYearFilter);
-        if (variaveisSelectedMonthFilter !== null) {
-            filteredData = filteredData.filter(v => v.data?.toDate().getMonth() === variaveisSelectedMonthFilter);
-        }
+    }
+    if (variaveisSelectedMonthFilter !== null) {
+        filteredData = filteredData.filter(v => v.data?.toDate().getMonth() === variaveisSelectedMonthFilter);
     }
     filteredData.sort((a, b) => b.data.toDate() - a.data.toDate());
     const tableBody = document.getElementById('variaveisTableBody');
@@ -435,6 +463,7 @@ function populateVariaveisFiltersAndApply() {
     applyVariaveisFilters();
 }
 
+// --- Lógica de Relatórios e Backup ---
 function generatePrintReport() {
     const dataToPrint = getFilteredData();
     if (dataToPrint.length === 0) {
@@ -444,69 +473,13 @@ function generatePrintReport() {
 
     const reportWindow = window.open('', '', 'height=800,width=1200');
     reportWindow.document.write('<html><head><title>Relatório de Lançamentos</title>');
-    
-    // --- INÍCIO DO ESTILO APRIMORADO ---
-    reportWindow.document.write(`
-        <style>
-            @media print {
-                body { -webkit-print-color-adjust: exact; } /* Garante que as cores de fundo sejam impressas no Chrome/Safari */
-            }
-            body { 
-                font-family: Arial, Helvetica, sans-serif; 
-                font-size: 10pt; 
-                color: #333;
-            }
-            h1 { 
-                text-align: center; 
-                margin-bottom: 10px;
-                font-size: 16pt;
-                color: #000;
-            }
-            p {
-                font-size: 8pt;
-                color: #777;
-                margin-bottom: 20px;
-                text-align: center;
-            }
-            table { 
-                width: 100%; 
-                border-collapse: collapse; 
-            }
-            th, td { 
-                border: 1px solid #ccc; 
-                padding: 4px 6px; 
-                text-align: left; 
-                word-wrap: break-word;
-            }
-            th { 
-                background-color: #f0f0f0; 
-                font-weight: bold;
-                color: #000;
-            }
-            tr:nth-child(even) {
-                background-color: #f9f9f9;
-            }
-        </style>
-    `);
-    // --- FIM DO ESTILO APRIMORADO ---
-
+    reportWindow.document.write('<style>@media print { body { -webkit-print-color-adjust: exact; } } body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #333; } h1 { text-align: center; margin-bottom: 10px; font-size: 16pt; color: #000; } p { font-size: 8pt; color: #777; margin-bottom: 20px; text-align: center; } table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; word-wrap: break-word; } th { background-color: #f0f0f0; font-weight: bold; color: #000; } tr:nth-child(even) { background-color: #f9f9f9; }</style>');
     reportWindow.document.write('</head><body>');
-    reportWindow.document.write(`<h1>Relatório de Lançamentos</h1>`);
-    reportWindow.document.write(`<p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>`);
-    reportWindow.document.write('<table><thead><tr>');
-    reportWindow.document.write('<th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th>');
-    reportWindow.document.write('</tr></thead><tbody>');
+    reportWindow.document.write(`<h1>Relatório de Lançamentos</h1><p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>`);
+    reportWindow.document.write('<table><thead><tr><th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th></tr></thead><tbody>');
 
     dataToPrint.forEach(l => {
-        reportWindow.document.write('<tr>');
-        reportWindow.document.write(`<td>${l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || ''}</td>`);
-        reportWindow.document.write(`<td>${l.cliente || ''}</td>`);
-        reportWindow.document.write(`<td>${l.numeroNf || 'NT'}</td>`);
-        reportWindow.document.write(`<td>${l.os || ''}</td>`);
-        reportWindow.document.write(`<td>${formatCurrency(getGiroTotal(l))}</td>`);
-        reportWindow.document.write(`<td>${currentUserProfile.funcao !== 'padrao' ? formatCurrency(l.comissao || 0) : 'N/A'}</td>`);
-        reportWindow.document.write(`<td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td>`);
-        reportWindow.document.write('</tr>');
+        reportWindow.document.write(`<tr><td>${l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || ''}</td><td>${l.cliente || ''}</td><td>${l.numeroNf || 'NT'}</td><td>${l.os || ''}</td><td>${formatCurrency(getGiroTotal(l))}</td><td>${currentUserProfile.funcao !== 'padrao' ? formatCurrency(l.comissao || 0) : 'N/A'}</td><td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td></tr>`);
     });
 
     reportWindow.document.write('</tbody></table></body></html>');
@@ -515,44 +488,22 @@ function generatePrintReport() {
     reportWindow.print();
 }
 
-    reportWindow.document.write('</tbody></table></body></html>');
-    reportWindow.document.close();
-    reportWindow.focus(); 
-    reportWindow.print();
-}
 function generateCsvReport() {
     const dataToExport = getFilteredData();
     if (dataToExport.length === 0) {
-        showAlertModal('Aviso', 'Não há dados para exportar.');
+        showAlertModal('Aviso', 'Não há dados para exportar com os filtros atuais.');
         return;
     }
-
-    // Função auxiliar para garantir que o texto com vírgulas não quebre o CSV
-    const escapeCsv = (str) => `"${(str || '').toString().replace(/"/g, '""')}"`;
-
+    const escapeCsv = (str) => `"${(str === null || str === undefined ? '' : str).toString().replace(/"/g, '""')}"`;
     const headers = ['Data Emissao', 'Cliente', 'Numero NF', 'O.S/PC', 'Descricao', 'Valor Total', 'Comissao', 'Data Faturamento', 'Observacoes'];
-    
-    const csvRows = [headers.join(',')]; // Inicia com os cabeçalhos
-
+    const csvRows = [headers.join(',')];
     dataToExport.forEach(l => {
-        const row = [
-            l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || '',
-            l.cliente || '',
-            l.numeroNf || 'NT',
-            l.os || '',
-            l.descricao || '',
-            getGiroTotal(l) || 0,
-            currentUserProfile.funcao !== 'padrao' ? (l.comissao || 0) : 'N/A',
-            l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente',
-            l.obs || ''
-        ];
+        const row = [l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || '', l.cliente || '', l.numeroNf || 'NT', l.os || '', l.descricao || '', getGiroTotal(l) || 0, currentUserProfile.funcao !== 'padrao' ? (l.comissao || 0) : 'N/A', l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente', l.obs || ''];
         csvRows.push(row.map(escapeCsv).join(','));
     });
-
     const csvString = csvRows.join('\n');
-    const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); // \uFEFF para Excel entender acentos
+    const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
-
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
     link.setAttribute("download", `relatorio_lancamentos_${new Date().toISOString().split('T')[0]}.csv`);
@@ -561,28 +512,27 @@ function generateCsvReport() {
     link.click();
     document.body.removeChild(link);
 }
+
 function generateBackupFile() {
-    const backupData = {
-        lancamentos: allLancamentosData,
-        clientes: allClientesData,
-        variaveis: allVariaveisData,
-        notasCompra: allNotasCompraData,
-        backupDate: new Date().toISOString()
-    };
-
-    const jsonString = JSON.stringify(backupData, null, 2); // O 'null, 2' formata o arquivo para ficar legível
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const link = document.createElement("a");
-
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `backup_gestao_pro_${new Date().toISOString().split('T')[0]}.json`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    showConfirmModal('Fazer Backup Completo?', 'Isso irá gerar um arquivo JSON com todos os dados do sistema.', () => {
+        const backupData = { lancamentos: allLancamentosData, clientes: allClientesData, variaveis: allVariaveisData, notasCompra: allNotasCompraData, backupDate: new Date().toISOString() };
+        const jsonString = JSON.stringify(backupData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `backup_gestao_pro_${new Date().toISOString().split('T')[0]}.json`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showAlertModal('Sucesso', 'O download do arquivo de backup foi iniciado.');
+    });
 }
-async function handleRestoreFile(file) { /* ... */ }
+
+async function handleRestoreFile(file) {
+    showAlertModal('Aviso', 'A função de restaurar backup ainda não foi implementada.');
+}
 
 // --- Event Listeners Globais ---
 document.addEventListener('DOMContentLoaded', () => {
