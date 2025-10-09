@@ -199,14 +199,14 @@ function renderView(viewId, data) {
         return;
     }
 
-    switch (viewId) {
+     switch (viewId) {
         case 'dashboardView':
             const endDateFinal = new Date(dashboardEndDate);
             endDateFinal.setHours(23, 59, 59, 999);
             const dashboardLancamentos = allLancamentosData.filter(l => l.dataEmissao?.toDate() >= dashboardStartDate && l.dataEmissao?.toDate() <= endDateFinal);
             const dashboardVariaveis = allVariaveisData.filter(v => v.data?.toDate() >= dashboardStartDate && v.data?.toDate() <= endDateFinal);
             const totalVariaveis = dashboardVariaveis.reduce((sum, v) => sum + v.valor, 0);
-            html = createDashboardHTML(dashboardLancamentos, totalVariaveis, startDate, endDate, currentUserProfile);
+            html = createDashboardHTML(dashboardLancamentos, totalVariaveis, dashboardStartDate, dashboardEndDate, currentUserProfile);
             break;
         case 'variaveisView':
             html = createVariaveisViewHTML(currentUserProfile);
@@ -229,6 +229,9 @@ function renderView(viewId, data) {
     }
     viewContainer.innerHTML = html;
     lucide.createIcons();
+     if (viewId === 'dashboardView') {
+        renderDashboardComponents();
+    }
 }
 
 // --- Funções de Componentes (Gráficos, etc.) ---
@@ -243,10 +246,106 @@ function renderDashboardComponents() {
 }
 
 // --- Lógica de Filtros, Ordenação e Paginação ---
-function getFilteredData() { /* ... */ }
-function applyFilters() { /* ... */ }
-function populateFiltersAndApply() { /* ... */ }
-function updateSortUI() { /* ... */ }
+function getFilteredData() {
+    let filtered = [...allLancamentosData];
+
+    // Filtro de Mês/Ano
+    if (selectedMonthFilter !== null && selectedYearFilter !== null) {
+        filtered = filtered.filter(l => {
+            const data = l.dataEmissao?.toDate();
+            return data && data.getMonth() === selectedMonthFilter && data.getFullYear() === selectedYearFilter;
+        });
+    }
+
+    // Filtro de Busca
+    if (searchTerm) {
+        const lowerCaseSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter(l =>
+            l.cliente?.toLowerCase().includes(lowerCaseSearch) ||
+            l.numeroNf?.toLowerCase().includes(lowerCaseSearch) ||
+            l.os?.toLowerCase().includes(lowerCaseSearch)
+        );
+    }
+
+    // Ordenação
+    filtered.sort((a, b) => {
+        let valA = a[sortState.key];
+        let valB = b[sortState.key];
+
+        if (sortState.key === 'dataEmissao') {
+            valA = valA?.toDate() || 0;
+            valB = valB?.toDate() || 0;
+        }
+
+        if (valA < valB) return sortState.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return sortState.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    return filtered;
+}
+
+function applyFilters() {
+    const filteredData = getFilteredData();
+    const totalItems = filteredData.length;
+    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+    currentPage = Math.max(1, Math.min(currentPage, totalPages));
+
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    const paginatedData = filteredData.slice(start, end);
+
+    const tableBody = document.getElementById('lancamentosTableBody');
+    if (tableBody) {
+        tableBody.innerHTML = createLancamentosTableRowsHTML(paginatedData, currentUserProfile);
+    }
+    
+    renderPaginationControls(currentPage, totalItems, totalPages, (direction) => {
+        if (direction === 'prev') currentPage--;
+        if (direction === 'next') currentPage++;
+        applyFilters();
+    });
+    updateSortUI();
+}
+
+function populateFiltersAndApply() {
+    const monthFilter = document.getElementById('monthFilter');
+    const yearFilter = document.getElementById('yearFilter');
+    const searchInput = document.getElementById('searchInput');
+    if (!monthFilter || !yearFilter || !searchInput) return;
+
+    // Popula Anos
+    const years = [...new Set(allLancamentosData.map(l => l.dataEmissao?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
+    yearFilter.innerHTML = years.map(year => `<option value="${year}">${year}</option>`).join('');
+    if (years.includes(selectedYearFilter)) {
+        yearFilter.value = selectedYearFilter;
+    }
+
+    // Popula Meses
+    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    monthFilter.innerHTML = monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
+    monthFilter.value = selectedMonthFilter;
+
+    // Adiciona Event Listeners
+    monthFilter.onchange = () => { selectedMonthFilter = parseInt(monthFilter.value); currentPage = 1; applyFilters(); };
+    yearFilter.onchange = () => { selectedYearFilter = parseInt(yearFilter.value); currentPage = 1; applyFilters(); };
+    searchInput.oninput = () => { searchTerm = searchInput.value; currentPage = 1; applyFilters(); };
+
+    applyFilters();
+}
+
+function updateSortUI() {
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        const key = btn.dataset.key;
+        const icon = btn.querySelector('i');
+        if (key === sortState.key) {
+            icon.setAttribute('data-lucide', sortState.direction === 'asc' ? 'arrow-up' : 'arrow-down');
+        } else {
+            icon.setAttribute('data-lucide', 'arrow-down-up');
+        }
+    });
+    lucide.createIcons();
+}
 
 // --- Lógica de Relatórios e Backup ---
 function generatePrintReport() { /* ... */ }
