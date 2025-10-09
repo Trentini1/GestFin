@@ -1,637 +1,897 @@
-import { formatCurrency, getGiroTotal } from './utils.js';
+// Firebase SDK
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { collection, doc, addDoc, getDoc, deleteDoc, onSnapshot, query, updateDoc, writeBatch, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// Módulos locais
+import { auth, db } from './firebase-config.js';
+import { extractPdfImage, callGeminiForAnalysis } from './api.js';
+import { getGiroTotal, animateCountUp, formatCurrency } from './utils.js';
+import {
+    createDashboardHTML, createLancamentosListHTML, createNovoLancamentoFormHTML,
+    createLancamentosTableRowsHTML, createLancamentoDetailHTML, showAlertModal,
+    showConfirmModal, closeModal, handleConfirm, renderPaginationControls, renderDashboardChart,
+    renderNfPieChart, createVariaveisViewHTML, createVariaveisTableRowsHTML,
+    createClientesViewHTML, createClientesTableRowsHTML, createClienteDetailHTML,
+    createNotasFiscaisViewHTML, createNotasCompraTableRowsHTML, createPagamentoRowHTML
+} from './ui.js';
 
 const DEFAULT_COMISSION_RATE = 0.5;
 
-// --- Funções de criação de HTML ---
+// --- Estado da Aplicação ---
+let currentUserProfile = null;
+let lancamentosUnsubscribe = null;
+let allLancamentosData = [];
+let variaveisUnsubscribe = null;
+let allVariaveisData = [];
+let clientesUnsubscribe = null;
+let allClientesData = [];
+let notasCompraUnsubscribe = null;
+let allNotasCompraData = [];
+let currentPage = 1;
+const ITEMS_PER_PAGE = 15;
+let selectedMonthFilter = null;
+let selectedYearFilter = null;
+let searchTerm = '';
+let sortState = { key: 'dataEmissao', direction: 'desc' };
+let nfSelectedMonthFilter = null;
+let nfSelectedYearFilter = null;
+let variaveisSelectedMonthFilter = null;
+let variaveisSelectedYearFilter = null;
+const hoje = new Date();
+const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+let dashboardStartDate = primeiroDiaDoMes;
+let dashboardEndDate = hoje;
 
-export const createDashboardHTML = (dashboardData, totalVariaveis, startDate, endDate, userProfile) => {
-    const faturamentoPeriodo = dashboardData.filter(l => l.faturado).reduce((sum, l) => sum + getGiroTotal(l), 0);
-    const comissoesPeriodo = dashboardData.filter(l => l.faturado).reduce((sum, l) => sum + (l.comissao || 0), 0);
-    const giroTotalPeriodo = dashboardData.reduce((sum, l) => sum + getGiroTotal(l), 0);
-    const totalAReceber = comissoesPeriodo + totalVariaveis;
-    const formatDateForInput = (date) => date.toISOString().split('T')[0];
-    const showFinancials = userProfile.funcao !== 'padrao';
+// --- Seletores do DOM ---
+const loadingView = document.getElementById('loadingView');
+const loginForm = document.getElementById('loginForm');
+const logoutButton = document.getElementById('logoutButton');
+const appView = document.getElementById('appView');
+const allViews = document.querySelectorAll('.view');
+const navLinks = document.querySelectorAll('.nav-link');
+const userNameEl = document.getElementById('userName');
 
-    return `
-        <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-            <h2 class="text-2xl font-bold">Dashboard</h2>
-            <div class="flex items-center gap-2 flex-wrap">
-                <label for="dashboardStartDate" class="text-sm font-medium">De:</label>
-                <input type="date" id="dashboardStartDate" value="${formatDateForInput(startDate)}" class="border-slate-300 rounded-md shadow-sm text-sm">
-                <label for="dashboardEndDate" class="text-sm font-medium">Até:</label>
-                <input type="date" id="dashboardEndDate" value="${formatDateForInput(endDate)}" class="border-slate-300 rounded-md shadow-sm text-sm">
-                <button id="dashboardFilterBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm">Filtrar</button>
-            </div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm text-slate-500">Giro Total</p><p data-value="${giroTotalPeriodo}" class="dashboard-value text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
-            ${showFinancials ? `
-            <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm text-slate-500">Comissões Faturadas</p><p data-value="${comissoesPeriodo}" class="dashboard-value text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
-            <div class="bg-white p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm text-slate-500">Variáveis</p><p data-value="${totalVariaveis}" class="dashboard-value text-2xl font-bold">${formatCurrency(0)}</p></div></div></div>
-            <div class="bg-green-100 border border-green-300 p-6 rounded-lg shadow"><div class="flex items-center"><div class="ml-4"><p class="text-sm font-bold text-green-800">Total a Receber</p><p data-value="${totalAReceber}" class="dashboard-value text-2xl font-bold text-green-900">${formatCurrency(0)}</p></div></div></div>
-            ` : '<div class="hidden lg:block col-span-3"></div>'}
-        </div>
-        <div class="mt-8 grid grid-cols-1 lg:grid-cols-5 gap-8">
-            <div class="lg:col-span-3 bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-medium mb-4">Faturamento (Últimos 6 Meses)</h3><div class="relative h-96"><canvas id="dashboardChart"></canvas></div></div>
-            <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-medium mb-4">Valores Com NF vs Sem NF (no período)</h3><div class="relative h-96 flex items-center justify-center"><canvas id="nfPieChart"></canvas></div></div>
-        </div>`;
-};
-
-export const createLancamentosListHTML = (userProfile) => {
-    const isReadOnly = userProfile.funcao === 'leitura';
-    return `
-    <div class="space-y-6">
-        ${!isReadOnly ? `
-        <div class="flex space-x-4">
-            <button id="toggleFormBtn" class="w-full flex justify-center items-center py-3 px-4 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:bg-slate-200 hover:border-slate-400 transition-colors"><i data-lucide="plus" class="w-5 h-5 mr-2"></i> Adicionar Lançamento Manual</button>
-            <button id="analiseIaBtn" class="w-full flex justify-center items-center py-3 px-4 bg-indigo-100 text-indigo-700 border-2 border-dashed border-indigo-300 rounded-lg hover:bg-indigo-200 hover:border-indigo-400 transition-colors font-semibold"><i data-lucide="scan-line" class="w-5 h-5 mr-2"></i> Analisar NF com IA</button>
-            <input type="file" id="nfUploadInput" class="hidden" accept="application/pdf" multiple>
-        </div>
-        <div id="formContainer" class="transition-all duration-500 ease-in-out overflow-hidden max-h-0"></div>
-        ` : ''}
-        <div class="relative"><i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i><input type="search" id="searchInput" placeholder="Buscar por cliente, NF ou O.S..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></div>
-        <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <h2 class="text-2xl font-bold">Histórico de Lançamentos</h2><div id="sort-reset-container" class="hidden items-center"></div>
-            <div class="flex items-center gap-4"><div class="flex items-center gap-2"><label for="monthFilter" class="text-sm font-medium">Mês:</label><select id="monthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div><div class="flex items-center gap-2"><label for="yearFilter" class="text-sm font-medium">Ano:</label><select id="yearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div></div>
-        </div>
-        <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
-            <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="dataEmissao">Data Emissão <i data-lucide="arrow-down-up" class="h-4 w-4"></i></button></th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="cliente">Cliente <i data-lucide="arrow-down-up" class="h-4 w-4"></i></button></th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">NF</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">O.S/PC</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Giro Total</th>
-                        ${userProfile.funcao !== 'padrao' ? `<th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Comissão</th>` : ''}
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Faturado</th>
-                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
-                    </tr>
-                </thead>
-                <tbody id="lancamentosTableBody" class="bg-white divide-y divide-slate-200"></tbody>
-            </table>
-        </div>
-        <div id="pagination-controls" class="flex justify-between items-center text-sm"></div>
-        <div class="mt-8 bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Exportar Relatório</h3>
-            <div class="flex space-x-4">
-                <button id="exportPdfBtn" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="printer" class="w-4 h-4 mr-2"></i> Imprimir / Salvar PDF</button>
-                <button id="exportCsvBtn" class="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="file-spreadsheet" class="w-4 h-4 mr-2"></i> Exportar para CSV (Excel)</button>
-            </div>
-        </div>
-        ${!isReadOnly ? `
-        <div class="mt-8 bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Backup e Restauração</h3>
-            <p class="text-sm text-slate-500 mb-4">Salve todos os seus dados ou restaure a partir de um backup.</p>
-            <div class="flex space-x-4">
-                <button id="backupBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="download" class="w-4 h-4 mr-2"></i> Fazer Backup (JSON)</button>
-                <button id="restoreBtn" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="upload" class="w-4 h-4 mr-2"></i> Restaurar Backup</button>
-                <input type="file" id="restoreInput" class="hidden" accept=".json">
-            </div>
-        </div>
-        ` : ''}
-    </div>`;
-};
-
-export const createNovoLancamentoFormHTML = (userProfile) => {
-    const showFinancials = userProfile.funcao !== 'padrao';
-    return `
-      <form id="novoLancamentoForm" class="p-6 bg-slate-100 border-t-2 border-b-2 border-slate-200 space-y-4">
-        <h3 class="text-xl font-semibold text-slate-800">Novo Lançamento Manual</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-                <label for="newDataEmissao" class="block text-sm font-medium text-slate-700">Data de Emissão</label>
-                <input type="date" id="newDataEmissao" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-            </div>
-            <div>
-                <label for="newCliente" class="block text-sm font-medium text-slate-700">Cliente</label>
-                <input list="client-list" id="newCliente" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-                <datalist id="client-list"></datalist>
-            </div>
-            <div>
-                <label for="newNumeroNf" class="block text-sm font-medium text-slate-700">Número NF</label>
-                <input type="text" id="newNumeroNf" placeholder="NT se não houver" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-            </div>
-            <div>
-                <label for="newOs" class="block text-sm font-medium text-slate-700">OS / PC</label>
-                <input type="text" id="newOs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-            </div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="md:col-span-2">
-                <label for="newDescricao" class="block text-sm font-medium text-slate-700">Motor / Descrição do Serviço</label>
-                <input type="text" id="newDescricao" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-            </div>
-            <div>
-                <label for="newValorTotal" class="block text-sm font-medium text-slate-700">Valor Total</label>
-                <input type="number" step="0.01" id="newValorTotal" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-            </div>
-        </div>
-        <div class="pt-4 border-t">
-            <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento</h4>
-            <div id="pagamentos-container" class="space-y-2"></div>
-            <button type="button" id="addPagamentoBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
-                <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento
-            </button>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
-             <div class="md:col-span-2">
-                <label for="newObs" class="block text-sm font-medium text-slate-700">Observação</label>
-                <textarea id="newObs" rows="2" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></textarea>
-            </div>
-            ${showFinancials ? `
-            <div>
-                <label for="newTaxaComissao" class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label>
-                <input type="number" step="0.01" id="newTaxaComissao" value="${DEFAULT_COMISSION_RATE}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-            </div>
-            ` : ''}
-        </div>
-        <div class="flex justify-end gap-3 pt-4 border-t">
-          <button type="button" id="cancelNewLancamento" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Cancelar</button>
-          <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">Salvar Lançamento</button>
-        </div>
-      </form>
-    `;
-};
-
-export const createLancamentosTableRowsHTML = (lancamentos, userProfile) => {
-    const isReadOnly = userProfile.funcao === 'leitura';
-    const colspan = userProfile.funcao === 'padrao' ? 7 : 8;
-    if (!lancamentos.length) return `<tr><td colspan="${colspan}" class="text-center py-10 text-slate-500">Nenhum lançamento encontrado para os filtros selecionados.</td></tr>`;
-    
-    return lancamentos.map(l => `
-        <tr class="hover:bg-slate-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l.dataEmissao?.toDate().toLocaleDateString('pt-BR')}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${l.cliente}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l.numeroNf || 'NT'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l.os || ''}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(getGiroTotal(l))}</td>
-            ${userProfile.funcao !== 'padrao' ? `<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(l.comissao)}</td>` : ''}
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500"><div class="flex items-center"><button data-id="${l.firestoreId}" class="faturado-toggle relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${l.faturado ? 'bg-green-500' : 'bg-gray-200'}" ${isReadOnly ? 'disabled' : 'cursor-pointer'}><span class="inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${l.faturado ? 'translate-x-6' : 'translate-x-1'}"></span></button><span class="ml-2">${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</span></div></td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"><button class="text-indigo-600 hover:text-indigo-900 view-details" data-id="${l.firestoreId}">${isReadOnly ? 'Ver Detalhes' : 'Editar'}</button></td>
-        </tr>`).join('');
-};
-
-export const createLancamentoDetailHTML = (data, userProfile) => {
-    const { lancamento, custosDaOs } = data;
-    const isReadOnly = userProfile.funcao === 'leitura';
-    const valorTotal = getGiroTotal(lancamento);
-    const totalCustos = custosDaOs.reduce((sum, nota) => sum + nota.valorTotal, 0);
-    const impostos = lancamento.impostos || {};
-    const valorIss = valorTotal * ((impostos.iss || 0) / 100);
-    const valorPis = valorTotal * ((impostos.pis || 0) / 100);
-    const valorCofins = valorTotal * ((impostos.cofins || 0) / 100);
-    const valorIcms = valorTotal * ((impostos.icms || 0) / 100);
-    const totalImpostos = valorIss + valorPis + valorCofins + valorIcms;
-    const resultadoFinal = valorTotal - totalCustos - totalImpostos;
-
-    const pagamentosHTML = (lancamento.pagamentos || []).map(p => `
-        <li class="flex justify-between items-center text-sm">
-            <span>${p.metodo}${p.parcelas > 1 ? ` (${p.parcelas}x)` : ''}</span>
-            <span class="font-medium">${formatCurrency(p.valor)}</span>
-        </li>
-    `).join('');
-
-    return `
-    <button class="back-to-list flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
-    <form id="editLancamentoForm" data-id="${lancamento.firestoreId}" class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto space-y-6">
-        <h2 class="text-2xl font-bold">${isReadOnly ? 'Detalhes do Lançamento' : 'Editar Lançamento'}</h2>
-        <fieldset ${isReadOnly ? 'disabled' : ''}>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div><label class="block text-sm font-medium text-slate-700">Data Emissão</label><input type="date" id="editDataEmissao" value="${lancamento.dataEmissao.toDate().toISOString().split('T')[0]}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                <div><label class="block text-sm font-medium text-slate-700">Cliente</label><input type="text" id="editCliente" value="${lancamento.cliente}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                <div><label class="block text-sm font-medium text-slate-700">Nº NF</label><input type="text" id="editNumeroNf" value="${lancamento.numeroNf || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                <div><label class="block text-sm font-medium text-slate-700">O.S/PC</label><input type="text" id="editOs" value="${lancamento.os || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Motor</label><input type="text" id="editDescricao" value="${lancamento.descricao || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                <div><label class="block text-sm font-medium text-slate-700">Valor Total</label><input type="number" step="0.01" id="editValorTotal" value="${valorTotal}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-            </div>
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento</h4>
-                <div id="pagamentos-container" class="space-y-2"></div>
-                ${!isReadOnly ? `
-                <button type="button" id="addPagamentoBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
-                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento
-                </button>
-                ` : ''}
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
-                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Observação</label><textarea id="editObs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100">${lancamento.obs || ''}</textarea></div>
-                ${userProfile.funcao !== 'padrao' ? `
-                <div><label class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label><input type="number" step="0.01" id="editTaxaComissao" value="${lancamento.taxaComissao ?? DEFAULT_COMISSION_RATE}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                ` : ''}
-            </div>
-        </fieldset>
-        ${!isReadOnly ? `
-        <div class="flex justify-end pt-4 border-t">
-            <button type="button" id="deleteLancamentoBtn" class="text-red-600 hover:underline mr-auto">Excluir Lançamento</button>
-            <button type="submit" class="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button>
-        </div>
-        ` : ''}
-    </form>
-    <div class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto mt-8">
-        <h3 class="text-xl font-bold mb-4">Resumo Financeiro</h3>
-        <div class="mb-6">
-            <h4 class="font-semibold text-slate-800 mb-2">Pagamentos Recebidos</h4>
-            <ul class="space-y-1 text-slate-600">
-                ${pagamentosHTML || '<li>Nenhuma forma de pagamento registrada.</li>'}
-            </ul>
-        </div>
-        <h4 class="font-semibold text-slate-800 mb-2">Análise da O.S.</h4>
-        ${custosDaOs.length > 0 ? `<div class="space-y-4">${custosDaOs.map(nota => `<div class="border p-4 rounded-md bg-slate-50"><p class="font-semibold">NF de Compra: ${nota.numeroNf} <span class="font-normal text-slate-500">- ${nota.dataEmissao.toDate().toLocaleDateString('pt-BR')}</span></p><ul class="list-disc list-inside mt-2 text-sm text-slate-600">${nota.itens.map(item => `<li>${item.quantidade || 1}x ${item.descricao}: <span class="font-medium">${formatCurrency(item.valor * (item.quantidade || 1))}</span></li>`).join('')}</ul></div>`).join('')}</div>` : `<p class="text-slate-500">Nenhuma nota fiscal de compra foi vinculada a esta O.S. ainda.</p>`}
-        <div class="mt-6 pt-4 border-t-2 space-y-2">
-            <div class="flex justify-between items-center text-lg"><span class="font-medium text-slate-600">Total de Custos:</span><span class="font-bold text-red-600">${formatCurrency(totalCustos)}</span></div>
-            <div class="flex justify-between items-center text-lg"><span class="font-medium text-slate-600">Total de Impostos:</span><span class="font-bold text-orange-600">${formatCurrency(totalImpostos)}</span></div>
-            <div class="flex justify-between items-center text-xl mt-2"><span class="font-bold text-slate-800">Resultado Final:</span><span class="font-extrabold ${resultadoFinal >= 0 ? 'text-green-700' : 'text-red-700'}">${formatCurrency(resultadoFinal)}</span></div>
-        </div>
-    </div>`;
-};
-
-export const createVariaveisViewHTML = (userProfile) => {
-    const isNotAdmin = userProfile.funcao !== 'admin';
-    return `
-    <div class="space-y-6 max-w-4xl mx-auto">
-        <h2 class="text-2xl font-bold">Gerenciar Variáveis</h2>
-        <form id="addVariavelForm" class="bg-white p-6 rounded-lg shadow space-y-4" ${isNotAdmin ? 'hidden' : ''}>
-            <h3 class="text-lg font-medium">Adicionar Nova Variável</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-slate-700">Data</label>
-                    <input type="date" id="newVariavelData" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700">Descrição</label>
-                    <input type="text" id="newVariavelDescricao" required placeholder="Ex: Reembolso de viagem" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700">Valor (R$)</label>
-                    <input type="number" step="0.01" id="newVariavelValor" required placeholder="150.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                </div>
-            </div>
-            <div class="flex justify-end">
-                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Variável</button>
-            </div>
-        </form>
-        <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <h3 class="text-lg font-medium">Histórico de Variáveis</h3>
-            <div class="flex items-center gap-4">
-                <div class="flex items-center gap-2">
-                    <label for="variaveisMonthFilter" class="text-sm font-medium">Mês:</label>
-                    <select id="variaveisMonthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select>
-                </div>
-                <div class="flex items-center gap-2">
-                    <label for="variaveisYearFilter" class="text-sm font-medium">Ano:</label>
-                    <select id="variaveisYearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select>
-                </div>
-            </div>
-        </div>
-        <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
-            <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Descrição</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th>
-                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
-                    </tr>
-                </thead>
-                <tbody id="variaveisTableBody"></tbody>
-            </table>
-        </div>
-    </div>`;
-};
-
-export const createVariaveisTableRowsHTML = (variaveis, userProfile) => {
-    const isNotAdmin = userProfile.funcao !== 'admin';
-    if (!variaveis.length) return '<tr><td colspan="4" class="text-center py-10 text-slate-500">Nenhuma variável encontrada para os filtros.</td></tr>';
-    
-    return variaveis.map(v => `
-        <tr class="hover:bg-slate-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${v.data.toDate().toLocaleDateString('pt-BR')}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${v.descricao}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(v.valor)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button class="text-red-600 hover:text-red-900 delete-variavel-btn" data-id="${v.firestoreId}" ${isNotAdmin ? 'hidden' : ''}>Excluir</button>
-            </td>
-        </tr>`).join('');
-};
-
-export const createClientesViewHTML = () => `
-    <div class="space-y-6 max-w-4xl mx-auto">
-        <h2 class="text-2xl font-bold">Gerenciar Clientes</h2>
-        <form id="addClienteForm" class="bg-white p-6 rounded-lg shadow space-y-4">
-            <h3 class="text-lg font-medium">Adicionar Novo Cliente</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-slate-700">Nome / Razão Social</label>
-                    <input type="text" id="newClienteNome" required placeholder="Nome completo do cliente" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700">CNPJ / CPF</label>
-                    <input type="text" id="newClienteCnpj" placeholder="00.000.000/0000-00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                </div>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-slate-700">Endereço</label>
-                <input type="text" id="newClienteEndereco" placeholder="Rua, Nº, Bairro, Cidade - Estado" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-slate-700">Telefone</label>
-                    <input type="tel" id="newClienteTelefone" placeholder="(41) 99999-9999" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700">E-mail</label>
-                    <input type="email" id="newClienteEmail" placeholder="contato@cliente.com" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                </div>
-            </div>
-            <div class="flex justify-end">
-                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Cliente</button>
-            </div>
-        </form>
-        <div class="bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Clientes Cadastrados</h3>
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-200">
-                    <thead class="bg-slate-50">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">CNPJ/CPF</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Telefone</th>
-                            <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
-                        </tr>
-                    </thead>
-                    <tbody id="clientesTableBody"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>`;
-
-export const createClientesTableRowsHTML = (clientes) => {
-    if (!clientes.length) return '<tr><td colspan="4" class="text-center py-10 text-slate-500">Nenhum cliente cadastrado.</td></tr>';
-    return clientes.sort((a,b) => a.nome.localeCompare(b.nome)).map(c => `
-        <tr class="hover:bg-slate-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${c.nome}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${c.cnpj || '-'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${c.telefone || '-'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
-                <button class="text-indigo-600 hover:text-indigo-900 edit-cliente-btn" data-id="${c.firestoreId}">Editar</button>
-                <button class="text-red-600 hover:text-red-900 delete-cliente-btn" data-id="${c.firestoreId}">Excluir</button>
-            </td>
-        </tr>`).join('');
-};
-
-export const createClienteDetailHTML = (cliente) => `
-    <button class="back-to-list-clientes flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista de clientes</button>
-    <form id="editClienteForm" data-id="${cliente.firestoreId}" class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto space-y-6">
-        <h2 class="text-2xl font-bold">Editar Cliente</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label class="block text-sm font-medium text-slate-700">Nome / Razão Social</label>
-                <input type="text" id="editClienteNome" value="${cliente.nome || ''}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-slate-700">CNPJ / CPF</label>
-                <input type="text" id="editClienteCnpj" value="${cliente.cnpj || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-            </div>
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700">Endereço</label>
-            <input type="text" id="editClienteEndereco" value="${cliente.endereco || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label class="block text-sm font-medium text-slate-700">Telefone</label>
-                <input type="tel" id="editClienteTelefone" value="${cliente.telefone || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-slate-700">E-mail</label>
-                <input type="email" id="editClienteEmail" value="${cliente.email || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-            </div>
-        </div>
-        <div class="flex justify-end pt-4 border-t">
-            <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button>
-        </div>
-    </form>
-`;
-
-export const createNotasFiscaisViewHTML = (lancamentos) => {
-    const osList = [...new Set(lancamentos.map(l => l.os).filter(Boolean))];
-    return `
-    <div class="space-y-6 max-w-6xl mx-auto">
-        <h2 class="text-2xl font-bold">Gerenciar Notas Fiscais de Compra</h2>
-        <form id="addNotaCompraForm" class="bg-white p-6 rounded-lg shadow space-y-4">
-            <h3 class="text-lg font-medium">Adicionar Nova NF de Compra</h3>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-slate-700">O.S. Vinculada</label>
-                    <input type="text" id="newNotaOsId" required list="os-list" placeholder="Nº da O.S." class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                    <datalist id="os-list">
-                        ${osList.map(os => `<option value="${os}"></option>`).join('')}
-                    </datalist>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700">Nº da NF</label>
-                    <input type="text" id="newNotaNumeroNf" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700">Data Emissão</label>
-                    <input type="date" id="newNotaData" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                </div>
-                 <div>
-                    <label class="block text-sm font-medium text-slate-700">Chave de Acesso (Opcional)</label>
-                    <input type="text" id="newNotaChaveAcesso" placeholder="44 dígitos" maxlength="44" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                </div>
-            </div>
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium">Impostos sobre a Compra (Crédito/Custo)</h4>
-                <p class="text-xs text-slate-500 mb-2">Preencha os valores em Reais (R$) informados na nota.</p>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div><label class="block text-sm font-medium text-slate-700">ICMS (R$)</label><input type="number" step="0.01" id="newCompraImpostoIcms" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                    <div><label class="block text-sm font-medium text-slate-700">IPI (R$)</label><input type="number" step="0.01" id="newCompraImpostoIpi" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                    <div><label class="block text-sm font-medium text-slate-700">PIS (R$)</label><input type="number" step="0.01" id="newCompraImpostoPis" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                    <div><label class="block text-sm font-medium text-slate-700">COFINS (R$)</label><input type="number" step="0.01" id="newCompraImpostoCofins" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                </div>
-            </div>
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento da Compra</h4>
-                <div id="pagamentos-container-compra" class="space-y-2"></div>
-                <button type="button" id="addPagamentoCompraBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
-                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento
-                </button>
-            </div>
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium mb-2">Itens da Nota</h4>
-                <div class="grid grid-cols-12 gap-x-2 gap-y-1 text-sm font-medium text-slate-600 px-1">
-                    <div class="col-span-6">Descrição do item</div>
-                    <div class="col-span-2">Qtd.</div>
-                    <div class="col-span-3">Valor Unit.</div>
-                </div>
-                <div id="itens-container" class="space-y-2"></div>
-                <button type="button" id="addItemBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
-                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Item
-                </button>
-            </div>
-            <div class="flex justify-end pt-4 border-t">
-                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Nota Fiscal</button>
-            </div>
-        </form>
-        <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <h3 class="text-lg font-medium">Histórico de Notas de Compra</h3>
-            <div class="flex items-center gap-4">
-                <div class="flex items-center gap-2">
-                    <label for="nfMonthFilter" class="text-sm font-medium">Mês:</label>
-                    <select id="nfMonthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select>
-                </div>
-                <div class="flex items-center gap-2">
-                    <label for="nfYearFilter" class="text-sm font-medium">Ano:</label>
-                    <select id="nfYearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select>
-                </div>
-            </div>
-        </div>
-        <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
-            <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nº NF</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">O.S. Vinculada</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor Total</th>
-                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
-                    </tr>
-                </thead>
-                <tbody id="notasCompraTableBody"></tbody>
-            </table>
-        </div>
-    </div>`;
-};
-
-export const createPagamentoRowHTML = (data = {}) => {
-    const rowId = `pagamento-row-${Date.now()}-${Math.random()}`;
-    const isParcelable = data.metodo === 'Cartão de Crédito' || data.metodo === 'Boleto';
-    return `
-        <div id="${rowId}" class="pagamento-row grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-5">
-                <select class="pagamento-metodo mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-                    <option value="PIX" ${data.metodo === 'PIX' ? 'selected' : ''}>PIX</option>
-                    <option value="Dinheiro" ${data.metodo === 'Dinheiro' ? 'selected' : ''}>Dinheiro</option>
-                    <option value="Cartão de Crédito" ${data.metodo === 'Cartão de Crédito' ? 'selected' : ''}>Cartão de Crédito</option>
-                    <option value="Cartão de Débito" ${data.metodo === 'Cartão de Débito' ? 'selected' : ''}>Cartão de Débito</option>
-                    <option value="Boleto" ${data.metodo === 'Boleto' ? 'selected' : ''}>Boleto</option>
-                    <option value="Cheque" ${data.metodo === 'Cheque' ? 'selected' : ''}>Cheque</option>
-                </select>
-            </div>
-            <div class="col-span-4">
-                <input type="number" step="0.01" placeholder="Valor" class="pagamento-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" value="${data.valor || ''}" required>
-            </div>
-            <div class="col-span-2">
-                <input type="number" placeholder="Parcelas" class="pagamento-parcelas mt-1 block w-full rounded-md border-slate-300 shadow-sm ${isParcelable ? '' : 'hidden'}" value="${data.parcelas || 1}">
-            </div>
-            <div class="col-span-1 text-right">
-                <button type="button" class="remove-pagamento-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-            </div>
-        </div>
-    `;
-};
-
-export const createNotasCompraTableRowsHTML = (notas, lancamentos) => {
-    if (!notas.length) return '<tr><td colspan="5" class="text-center py-10 text-slate-500">Nenhuma nota fiscal de compra encontrada para os filtros.</td></tr>';
-    
-    return notas.map(n => {
-        const lancamentoCorrespondente = lancamentos.find(l => l.os === n.osId);
-        const lancamentoId = lancamentoCorrespondente ? lancamentoCorrespondente.firestoreId : null;
-
-        return `
-        <tr class="hover:bg-slate-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${n.dataEmissao.toDate().toLocaleDateString('pt-BR')}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${n.numeroNf}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-                ${lancamentoId ? `
-                    <button class="link-to-os text-indigo-600 hover:underline font-medium" data-lancamento-id="${lancamentoId}">
-                        ${n.osId}
-                    </button>
-                ` : `
-                    <span class="text-slate-500" title="Não foi possível encontrar um lançamento com este número de O.S.">${n.osId}</span> 
-                `}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(n.valorTotal)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button class="text-red-600 hover:text-red-900 delete-notacompra-btn" data-id="${n.firestoreId}">Excluir</button>
-            </td>
-        </tr>`
-    }).join('');
-};
-
-// --- Funções de Modal e Componentes ---
-let confirmCallback = null;
-export const showAlertModal = (title, message) => {
-    const modal = document.getElementById('alertModal');
-    if(!modal) return;
-    modal.querySelector('#alertModalTitle').textContent = title;
-    modal.querySelector('#alertModalMessage').textContent = message;
-    modal.style.display = 'flex';
-};
-export const showConfirmModal = (title, message, onConfirm) => {
-    const modal = document.getElementById('confirmModal');
-    if(!modal) return;
-    modal.querySelector('#confirmModalTitle').textContent = title;
-    modal.querySelector('#confirmModalMessage').textContent = message;
-    confirmCallback = onConfirm;
-    modal.style.display = 'flex';
-};
-export const handleConfirm = () => {
-    if (confirmCallback) confirmCallback();
-    closeModal('confirmModal');
-    confirmCallback = null; 
-};
-export const closeModal = (modalId) => {
-    const modal = document.getElementById(modalId);
-    if(modal) modal.style.display = 'none';
-};
-
-export function renderPaginationControls(currentPage, totalItems, totalPages, onPageChange) {
-    const container = document.getElementById('pagination-controls');
-    if (!container) return;
-    const itemsPerPage = 15;
-    container.innerHTML = `<div><p class="text-sm text-gray-700">Mostrando <span class="font-medium">${Math.min((currentPage - 1) * itemsPerPage + 1, totalItems)}</span> a <span class="font-medium">${Math.min(currentPage * itemsPerPage, totalItems)}</span> de <span class="font-medium">${totalItems}</span> resultados</p></div><div><nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"><button id="prev-page" class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50">Anterior</button><button id="next-page" class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50">Próximo</button></nav></div>`;
-    const prevButton = document.getElementById('prev-page');
-    const nextButton = document.getElementById('next-page');
-    prevButton.disabled = currentPage === 1;
-    nextButton.disabled = currentPage === totalPages || totalItems === 0;
-    prevButton.onclick = () => onPageChange('prev');
-    nextButton.onclick = () => onPageChange('next');
-}
-
-let dashboardChart = null;
-export function renderDashboardChart(lancamentos) {
-    const chartCtx = document.getElementById('dashboardChart')?.getContext('2d');
-    if (!chartCtx) return;
-    const labels = [];
-    const faturamentoData = [];
-    const comissaoData = [];
-    for (let i = 5; i >= 0; i--) {
-        const date = new Date();
-        date.setMonth(date.getMonth() - i);
-        const month = date.toLocaleString('pt-BR', { month: 'short' });
-        const year = date.getFullYear();
-        labels.push(`${month.charAt(0).toUpperCase() + month.slice(1)}/${year}`);
-        const faturadosNoMes = lancamentos.filter(l => {
-            const faturadoDate = l.faturado?.toDate();
-            return faturadoDate && faturadoDate.getMonth() === date.getMonth() && faturadoDate.getFullYear() === year;
-        });
-        faturamentoData.push(faturadosNoMes.reduce((sum, l) => sum + getGiroTotal(l), 0));
-        comissaoData.push(faturadosNoMes.reduce((sum, l) => sum + (l.comissao || 0), 0));
+// --- Lógica de Autenticação ---
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        const userDocRef = doc(db, "usuarios", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+            currentUserProfile = userDocSnap.data();
+            userNameEl.textContent = currentUserProfile.nome;
+            loadingView.style.display = 'none';
+            appView.style.display = 'block';
+            if (!lancamentosUnsubscribe) attachLancamentosListener();
+            if (currentUserProfile.funcao !== 'padrao' && !variaveisUnsubscribe) attachVariaveisListener();
+            if (!clientesUnsubscribe) attachClientesListener();
+            if (!notasCompraUnsubscribe) attachNotasCompraListener();
+            const variaveisNavLink = document.querySelector('[data-view="variaveisView"]');
+            if (variaveisNavLink) {
+                variaveisNavLink.style.display = (currentUserProfile.funcao === 'padrao') ? 'none' : 'flex';
+            }
+            showView('dashboardView');
+        } else {
+            showAlertModal('Erro de Perfil', 'Seu perfil de usuário não foi encontrado no banco de dados. Contate o administrador.');
+            signOut(auth);
+        }
+    } else {
+        currentUserProfile = null;
+        appView.style.display = 'none';
+        loadingView.style.display = 'flex';
+        if (lancamentosUnsubscribe) { lancamentosUnsubscribe(); lancamentosUnsubscribe = null; }
+        if (variaveisUnsubscribe) { variaveisUnsubscribe(); variaveisUnsubscribe = null; }
+        if (clientesUnsubscribe) { clientesUnsubscribe(); clientesUnsubscribe = null; }
+        if (notasCompraUnsubscribe) { notasCompraUnsubscribe(); notasCompraUnsubscribe = null; }
     }
-    if (dashboardChart) dashboardChart.destroy();
-    dashboardChart = new Chart(chartCtx, { type: 'bar', data: { labels, datasets: [{ label: 'Faturamento', data: faturamentoData, backgroundColor: 'rgba(79, 70, 229, 0.8)' }, { label: 'Comissão', data: comissaoData, backgroundColor: 'rgba(251, 191, 36, 0.8)' }] }, options: { scales: { y: { beginAtZero: true, ticks: { callback: value => 'R$ ' + value.toLocaleString('pt-BR') } } }, responsive: true, maintainAspectRatio: false } });
+});
+
+logoutButton.addEventListener('click', () => signOut(auth));
+
+// --- Lógica de Dados (Firestore) ---
+function attachLancamentosListener() {
+    const q = query(collection(db, 'lancamentos'));
+    lancamentosUnsubscribe = onSnapshot(q, (querySnapshot) => {
+        allLancamentosData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
+        const currentViewEl = document.querySelector('.view[style*="block"]');
+        if (currentViewEl?.id === 'lancamentosListView') applyFilters();
+        if (currentViewEl?.id === 'dashboardView') showView('dashboardView');
+    }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os lançamentos."));
 }
 
-let nfPieChart = null;
-export function renderNfPieChart(lancamentosNoPeriodo) {
-    const ctx = document.getElementById('nfPieChart')?.getContext('2d');
-    if (!ctx) return;
-    const valorComNf = lancamentosNoPeriodo.filter(l => l.numeroNf && l.numeroNf.toUpperCase() !== 'NT').reduce((sum, l) => sum + getGiroTotal(l), 0);
-    const valorSemNf = lancamentosNoPeriodo.filter(l => !l.numeroNf || l.numeroNf.toUpperCase() === 'NT').reduce((sum, l) => sum + getGiroTotal(l), 0);
-    const data = { labels: ['Com NF', 'Sem NF (NT)'], datasets: [{ data: [valorComNf, valorSemNf], backgroundColor: ['rgba(79, 70, 229, 0.8)', 'rgba(203, 213, 225, 0.8)'], borderColor: '#FFFFFF', borderWidth: 2 }] };
-    if (nfPieChart) nfPieChart.destroy();
-    nfPieChart = new Chart(ctx, { type: 'doughnut', data, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' }, tooltip: { callbacks: { label: context => `${context.label || ''}: ${formatCurrency(context.parsed)}` } } } } });
+function attachVariaveisListener() {
+    const q = query(collection(db, 'variaveis'));
+    variaveisUnsubscribe = onSnapshot(q, (querySnapshot) => {
+        allVariaveisData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
+        const currentViewEl = document.querySelector('.view[style*="block"]');
+        if (currentViewEl?.id === 'variaveisView') applyVariaveisFilters();
+    }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as variáveis."));
 }
+
+function attachClientesListener() {
+    const q = query(collection(db, 'clientes'));
+    clientesUnsubscribe = onSnapshot(q, (querySnapshot) => {
+        allClientesData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
+        const currentViewEl = document.querySelector('.view[style*="block"]');
+        if (currentViewEl?.id === 'clientesView') {
+            const tableBody = document.getElementById('clientesTableBody');
+            if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
+        }
+    }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os clientes."));
+}
+
+function attachNotasCompraListener() {
+    const q = query(collection(db, 'notasCompra'));
+    notasCompraUnsubscribe = onSnapshot(q, (querySnapshot) => {
+        allNotasCompraData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
+        const currentViewEl = document.querySelector('.view[style*="block"]');
+        if (currentViewEl?.id === 'notasFiscaisView') applyNfFilters();
+    }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as notas de compra."));
+}
+
+// --- Lógica de Navegação e Renderização ---
+async function showView(viewId, dataId = null) {
+    if (!currentUserProfile) return;
+    if (viewId === 'variaveisView' && currentUserProfile.funcao === 'padrao') {
+        showAlertModal('Acesso Negado', 'Você não tem permissão para acessar esta área.');
+        viewId = 'dashboardView';
+    }
+    allViews.forEach(v => v.style.display = 'none');
+    const viewContainer = document.getElementById(viewId);
+    if (viewContainer) {
+        viewContainer.style.display = 'block';
+        viewContainer.dataset.id = dataId;
+    }
+
+    renderView(viewId, { isLoading: true });
+
+    try {
+        if (viewId === 'lancamentoDetailView' && dataId) {
+            const docRef = doc(db, "lancamentos", dataId);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const lancamento = { firestoreId: docSnap.id, ...docSnap.data() };
+                const custosDaOs = allNotasCompraData.filter(nota => nota.osId === lancamento.os);
+                renderView(viewId, { lancamento, custosDaOs });
+            } else {
+                showAlertModal("Erro", "Lançamento não encontrado.");
+                showView('lancamentosListView');
+            }
+        } else if (viewId === 'clienteDetailView' && dataId) {
+            const cliente = allClientesData.find(c => c.firestoreId === dataId);
+            if (cliente) {
+                renderView(viewId, cliente);
+            } else {
+                showAlertModal('Erro', 'Cliente não encontrado.');
+                showView('clientesView');
+            }
+        } else {
+            renderView(viewId);
+            if (viewId === 'lancamentosListView') populateFiltersAndApply();
+            if (viewId === 'notasFiscaisView') populateNfFiltersAndApply();
+            if (viewId === 'variaveisView') populateVariaveisFiltersAndApply();
+            if (viewId === 'notasFiscaisView' && currentUserProfile.funcao !== 'leitura') {
+                setTimeout(() => document.getElementById('addItemBtn')?.click(), 100);
+            }
+        }
+    } catch (e) {
+        showAlertModal("Erro ao carregar a visão", e.message);
+        renderView(viewId);
+    }
+
+    navLinks.forEach(link => {
+        const linkView = link.dataset.view;
+        const isActive = linkView === viewId ||
+            (linkView === 'lancamentosListView' && viewId === 'lancamentoDetailView') ||
+            (linkView === 'clientesView' && viewId === 'clienteDetailView');
+
+        link.classList.toggle('text-indigo-600', isActive);
+        link.classList.toggle('border-b-2', isActive);
+        link.classList.toggle('border-indigo-600', isActive);
+        link.classList.toggle('text-slate-500', !isActive);
+    });
+}
+
+function renderView(viewId, data = {}) {
+    const viewContainer = document.getElementById(viewId);
+    if (!viewContainer) return;
+
+    if (data.isLoading) {
+        viewContainer.innerHTML = `<div class="flex items-center justify-center h-96"><div class="loader"></div></div>`;
+        return;
+    }
+
+    let html = '';
+    switch (viewId) {
+        case 'dashboardView':
+            const endDateFinal = new Date(dashboardEndDate);
+            endDateFinal.setHours(23, 59, 59, 999);
+            const dashboardLancamentos = allLancamentosData.filter(l => l.dataEmissao?.toDate() >= dashboardStartDate && l.dataEmissao?.toDate() <= endDateFinal);
+            const dashboardVariaveis = allVariaveisData.filter(v => v.data?.toDate() >= dashboardStartDate && v.data?.toDate() <= endDateFinal);
+            const totalVariaveis = dashboardVariaveis.reduce((sum, v) => sum + v.valor, 0);
+            html = createDashboardHTML(dashboardLancamentos, totalVariaveis, dashboardStartDate, dashboardEndDate, currentUserProfile);
+            break;
+        case 'variaveisView':
+            html = createVariaveisViewHTML(currentUserProfile);
+            break;
+        case 'clientesView':
+            html = createClientesViewHTML(currentUserProfile);
+            break;
+        case 'lancamentosListView':
+            html = createLancamentosListHTML(currentUserProfile);
+            break;
+        case 'lancamentoDetailView':
+            html = createLancamentoDetailHTML(data, currentUserProfile);
+            break;
+        case 'notasFiscaisView':
+            html = createNotasFiscaisViewHTML(allLancamentosData, currentUserProfile);
+            break;
+        case 'clienteDetailView':
+            html = createClienteDetailHTML(data, currentUserProfile);
+            break;
+    }
+    viewContainer.innerHTML = html;
+    lucide.createIcons();
+
+    // Pós-renderização
+    if (viewId === 'dashboardView') {
+        renderDashboardComponents();
+    } else if (viewId === 'lancamentoDetailView' && data.lancamento) {
+        updatePagamentosSummary('lancamento');
+    } else if (viewId === 'clientesView') {
+        const tableBody = document.getElementById('clientesTableBody');
+        if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
+    }
+}
+
+// --- Funções de Componentes (Gráficos, etc.) ---
+function renderDashboardComponents() {
+    const endDateFinal = new Date(dashboardEndDate);
+    endDateFinal.setHours(23, 59, 59, 999);
+    const dashboardLancamentos = allLancamentosData.filter(l => l.dataEmissao?.toDate() >= dashboardStartDate && l.dataEmissao?.toDate() <= endDateFinal);
+    renderDashboardChart(allLancamentosData);
+    renderNfPieChart(dashboardLancamentos);
+    document.querySelectorAll('.dashboard-value').forEach(el => animateCountUp(el, parseFloat(el.dataset.value)));
+}
+
+// --- Lógica de Filtros e Paginação ---
+function getFilteredData() {
+    let filtered = [...allLancamentosData];
+    if (selectedYearFilter !== null) {
+        filtered = filtered.filter(l => l.dataEmissao?.toDate().getFullYear() === selectedYearFilter);
+    }
+    if (selectedMonthFilter !== null) {
+        filtered = filtered.filter(l => l.dataEmissao?.toDate().getMonth() === selectedMonthFilter);
+    }
+    if (searchTerm) {
+        const lowerCaseSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter(l =>
+            l.cliente?.toLowerCase().includes(lowerCaseSearch) ||
+            l.numeroNf?.toLowerCase().includes(lowerCaseSearch) ||
+            l.os?.toLowerCase().includes(lowerCaseSearch)
+        );
+    }
+    filtered.sort((a, b) => {
+        let valA = a[sortState.key];
+        let valB = b[sortState.key];
+        if (sortState.key === 'dataEmissao') {
+            valA = valA?.toDate() || 0;
+            valB = valB?.toDate() || 0;
+        }
+        if (valA < valB) return sortState.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return sortState.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+    return filtered;
+}
+
+function applyFilters() {
+    const filteredData = getFilteredData();
+    const totalItems = filteredData.length;
+    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+    currentPage = Math.max(1, Math.min(currentPage, totalPages));
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    const paginatedData = filteredData.slice(start, end);
+    const tableBody = document.getElementById('lancamentosTableBody');
+    if (tableBody) {
+        tableBody.innerHTML = createLancamentosTableRowsHTML(paginatedData, currentUserProfile);
+    }
+    renderPaginationControls(currentPage, totalItems, totalPages, (direction) => {
+        if (direction === 'prev') currentPage--;
+        if (direction === 'next') currentPage++;
+        applyFilters();
+    });
+    updateSortUI();
+}
+
+function populateFiltersAndApply() {
+    const monthFilter = document.getElementById('monthFilter');
+    const yearFilter = document.getElementById('yearFilter');
+    const searchInput = document.getElementById('searchInput');
+    if (!monthFilter || !yearFilter || !searchInput) return;
+
+    const years = [...new Set(allLancamentosData.map(l => l.dataEmissao?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
+    yearFilter.innerHTML = '<option value="">Todos os Anos</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
+    yearFilter.value = selectedYearFilter === null ? '' : selectedYearFilter;
+
+    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    monthFilter.innerHTML = '<option value="">Todos os Meses</option>' + monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
+    monthFilter.value = selectedMonthFilter === null ? '' : selectedMonthFilter;
+
+    monthFilter.onchange = () => { selectedMonthFilter = monthFilter.value === '' ? null : parseInt(monthFilter.value); currentPage = 1; applyFilters(); };
+    yearFilter.onchange = () => { selectedYearFilter = yearFilter.value === '' ? null : parseInt(yearFilter.value); currentPage = 1; applyFilters(); };
+    searchInput.oninput = () => { searchTerm = searchInput.value; currentPage = 1; applyFilters(); };
+    applyFilters();
+}
+
+function updateSortUI() {
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        const existingIcon = btn.querySelector('svg');
+        if (existingIcon) {
+            existingIcon.remove();
+        }
+        const key = btn.dataset.key;
+        let iconName = 'arrow-down-up';
+        if (key === sortState.key) {
+            iconName = sortState.direction === 'asc' ? 'arrow-up' : 'arrow-down';
+        }
+        btn.insertAdjacentHTML('beforeend', `<i data-lucide="${iconName}" class="h-4 w-4"></i>`);
+    });
+    lucide.createIcons();
+}
+
+function applyNfFilters() {
+    let filteredData = [...allNotasCompraData];
+    if (nfSelectedYearFilter !== null) {
+        filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getFullYear() === nfSelectedYearFilter);
+    }
+    if (nfSelectedMonthFilter !== null) {
+        filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getMonth() === nfSelectedMonthFilter);
+    }
+    filteredData.sort((a, b) => b.dataEmissao.toDate() - a.dataEmissao.toDate());
+    const tableBody = document.getElementById('notasCompraTableBody');
+    if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(filteredData, allLancamentosData);
+}
+
+function populateNfFiltersAndApply() {
+    const monthFilter = document.getElementById('nfMonthFilter');
+    const yearFilter = document.getElementById('nfYearFilter');
+    if (!monthFilter || !yearFilter) return;
+
+    const years = [...new Set(allNotasCompraData.map(l => l.dataEmissao?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
+    yearFilter.innerHTML = '<option value="">Todos os Anos</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
+    yearFilter.value = nfSelectedYearFilter === null ? '' : nfSelectedYearFilter;
+
+    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    monthFilter.innerHTML = '<option value="">Todos os Meses</option>' + monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
+    monthFilter.value = nfSelectedMonthFilter === null ? '' : nfSelectedMonthFilter;
+
+    monthFilter.onchange = () => { nfSelectedMonthFilter = monthFilter.value === '' ? null : parseInt(monthFilter.value); applyNfFilters(); };
+    yearFilter.onchange = () => { nfSelectedYearFilter = yearFilter.value === '' ? null : parseInt(yearFilter.value); applyNfFilters(); };
+    applyNfFilters();
+}
+
+function applyVariaveisFilters() {
+    let filteredData = [...allVariaveisData];
+    if (variaveisSelectedYearFilter !== null) {
+        filteredData = filteredData.filter(v => v.data?.toDate().getFullYear() === variaveisSelectedYearFilter);
+    }
+    if (variaveisSelectedMonthFilter !== null) {
+        filteredData = filteredData.filter(v => v.data?.toDate().getMonth() === variaveisSelectedMonthFilter);
+    }
+    filteredData.sort((a, b) => b.data.toDate() - a.data.toDate());
+    const tableBody = document.getElementById('variaveisTableBody');
+    if (tableBody) tableBody.innerHTML = createVariaveisTableRowsHTML(filteredData, currentUserProfile);
+}
+
+function populateVariaveisFiltersAndApply() {
+    const monthFilter = document.getElementById('variaveisMonthFilter');
+    const yearFilter = document.getElementById('variaveisYearFilter');
+    if (!monthFilter || !yearFilter) return;
+
+    const years = [...new Set(allVariaveisData.map(v => v.data?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
+    yearFilter.innerHTML = '<option value="">Todos os Anos</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
+    yearFilter.value = variaveisSelectedYearFilter === null ? '' : variaveisSelectedYearFilter;
+
+    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    monthFilter.innerHTML = '<option value="">Todos os Meses</option>' + monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
+    monthFilter.value = variaveisSelectedMonthFilter === null ? '' : variaveisSelectedMonthFilter;
+
+    monthFilter.onchange = () => { variaveisSelectedMonthFilter = monthFilter.value === '' ? null : parseInt(monthFilter.value); applyVariaveisFilters(); };
+    yearFilter.onchange = () => { variaveisSelectedYearFilter = yearFilter.value === '' ? null : parseInt(yearFilter.value); applyVariaveisFilters(); };
+    applyVariaveisFilters();
+}
+
+// --- LÓGICA DO MODAL DE PAGAMENTOS ---
+let activeModalTarget = null;
+
+function openPagamentosModal(target) {
+    activeModalTarget = target;
+    const hiddenInputId = `hidden-pagamentos-data${target === 'compra' ? '-compra' : ''}`;
+    const hiddenInput = document.getElementById(hiddenInputId);
+    const pagamentosList = document.getElementById('modal-pagamentos-list');
+    pagamentosList.innerHTML = '';
+
+    try {
+        const pagamentos = JSON.parse(hiddenInput.value || '[]');
+        if (pagamentos.length > 0) {
+            pagamentos.forEach(p => pagamentosList.innerHTML += createPagamentoRowHTML(p));
+        } else {
+            pagamentosList.innerHTML += createPagamentoRowHTML();
+        }
+    } catch (e) {
+        pagamentosList.innerHTML += createPagamentoRowHTML();
+    }
+    
+    lucide.createIcons();
+    document.getElementById('pagamentosModal').classList.remove('hidden');
+}
+
+function savePagamentosFromModal() {
+    const hiddenInputId = `hidden-pagamentos-data${activeModalTarget === 'compra' ? '-compra' : ''}`;
+    const hiddenInput = document.getElementById(hiddenInputId);
+    const pagamentosList = document.getElementById('modal-pagamentos-list');
+    
+    const pagamentos = [];
+    pagamentosList.querySelectorAll('.pagamento-row').forEach(row => {
+        const metodo = row.querySelector('.pagamento-metodo').value;
+        const valor = parseFloat(row.querySelector('.pagamento-valor').value);
+        const parcelasInput = row.querySelector('.pagamento-parcelas');
+        const parcelas = parcelasInput.classList.contains('hidden') ? 1 : (parseInt(parcelasInput.value) || 1);
+        
+        if(metodo && !isNaN(valor) && valor > 0) {
+            pagamentos.push({ metodo, valor, parcelas });
+        }
+    });
+
+    hiddenInput.value = JSON.stringify(pagamentos);
+    updatePagamentosSummary(activeModalTarget);
+    closePagamentosModal();
+}
+
+function updatePagamentosSummary(target) {
+    const summaryId = `pagamentos-summary${target === 'compra' ? '-compra' : ''}`;
+    const hiddenInputId = `hidden-pagamentos-data${target === 'compra' ? '-compra' : ''}`;
+    const summaryEl = document.getElementById(summaryId);
+    const hiddenInput = document.getElementById(hiddenInputId);
+
+    if (!summaryEl || !hiddenInput) return;
+
+    try {
+        const pagamentos = JSON.parse(hiddenInput.value || '[]');
+        if (pagamentos.length === 0) {
+            summaryEl.textContent = 'Nenhum pagamento adicionado.';
+            return;
+        }
+        const total = pagamentos.reduce((sum, p) => sum + p.valor, 0);
+        summaryEl.textContent = `${pagamentos.length} pagamento(s) adicionado(s). Total: ${formatCurrency(total)}`;
+    } catch (e) {
+        summaryEl.textContent = 'Erro ao ler pagamentos.';
+    }
+}
+
+function closePagamentosModal() {
+    document.getElementById('pagamentosModal').classList.add('hidden');
+    activeModalTarget = null;
+}
+    
+// --- Lógica de Relatórios e Backup ---
+function generatePrintReport() {
+    const dataToPrint = getFilteredData();
+    if (dataToPrint.length === 0) {
+        showAlertModal('Aviso', 'Não há dados para imprimir com os filtros atuais.');
+        return;
+    }
+    const reportWindow = window.open('', '', 'height=800,width=1200');
+    reportWindow.document.write('<html><head><title>Relatório de Lançamentos</title>');
+    reportWindow.document.write('<style>@media print { body { -webkit-print-color-adjust: exact; } } body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #333; } h1 { text-align: center; margin-bottom: 10px; font-size: 16pt; color: #000; } p { font-size: 8pt; color: #777; margin-bottom: 20px; text-align: center; } table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; word-wrap: break-word; } th { background-color: #f0f0f0; font-weight: bold; color: #000; } tr:nth-child(even) { background-color: #f9f9f9; }</style>');
+    reportWindow.document.write('</head><body>');
+    reportWindow.document.write(`<h1>Relatório de Lançamentos</h1><p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>`);
+    reportWindow.document.write('<table><thead><tr><th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th></tr></thead><tbody>');
+    dataToPrint.forEach(l => {
+        reportWindow.document.write(`<tr><td>${l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || ''}</td><td>${l.cliente || ''}</td><td>${l.numeroNf || 'NT'}</td><td>${l.os || ''}</td><td>${formatCurrency(getGiroTotal(l))}</td><td>${currentUserProfile.funcao !== 'padrao' ? formatCurrency(l.comissao || 0) : 'N/A'}</td><td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td></tr>`);
+    });
+    reportWindow.document.write('</tbody></table></body></html>');
+    reportWindow.document.close();
+    reportWindow.focus(); 
+    reportWindow.print();
+}
+
+function generateCsvReport() {
+    const dataToExport = getFilteredData();
+    if (dataToExport.length === 0) {
+        showAlertModal('Aviso', 'Não há dados para exportar com os filtros atuais.');
+        return;
+    }
+    const escapeCsv = (str) => `"${(str === null || str === undefined ? '' : str).toString().replace(/"/g, '""')}"`;
+    const headers = ['Data Emissao', 'Cliente', 'Numero NF', 'O.S/PC', 'Descricao', 'Valor Total', 'Comissao', 'Data Faturamento', 'Observacoes'];
+    const csvRows = [headers.join(',')];
+    dataToExport.forEach(l => {
+        const row = [l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || '', l.cliente || '', l.numeroNf || 'NT', l.os || '', l.descricao || '', getGiroTotal(l) || 0, currentUserProfile.funcao !== 'padrao' ? (l.comissao || 0) : 'N/A', l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente', l.obs || ''];
+        csvRows.push(row.map(escapeCsv).join(','));
+    });
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `relatorio_lancamentos_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function generateBackupFile() {
+    showConfirmModal('Fazer Backup Completo?', 'Isso irá gerar um arquivo JSON com todos os dados do sistema.', () => {
+        const backupData = { lancamentos: allLancamentosData, clientes: allClientesData, variaveis: allVariaveisData, notasCompra: allNotasCompraData, backupDate: new Date().toISOString() };
+        const jsonString = JSON.stringify(backupData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `backup_gestao_pro_${new Date().toISOString().split('T')[0]}.json`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showAlertModal('Sucesso', 'O download do arquivo de backup foi iniciado.');
+    });
+}
+
+async function handleRestoreFile(file) {
+    showAlertModal('Aviso', 'A função de restaurar backup ainda não foi implementada.');
+}
+
+// --- Event Listeners Globais ---
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('loginForm');
+    if(loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const loginButton = document.getElementById('loginButton');
+            loginButton.disabled = true;
+            loginButton.textContent = 'Entrando...';
+        
+            signInWithEmailAndPassword(auth, email, password)
+                .catch(error => {
+                    showAlertModal('Erro de Login', 'E-mail ou senha inválidos.');
+                })
+                .finally(() => {
+                    loginButton.disabled = false;
+                    loginButton.textContent = 'Entrar';
+                });
+        });
+    }
+
+    document.getElementById('alertModalCloseButton')?.addEventListener('click', () => closeModal('alertModal'));
+    document.getElementById('confirmModalCancelButton')?.addEventListener('click', () => closeModal('confirmModal'));
+    document.getElementById('confirmModalConfirmButton')?.addEventListener('click', handleConfirm);
+    document.getElementById('pagamentosModalCancelBtn')?.addEventListener('click', closePagamentosModal);
+    document.getElementById('pagamentosModalSaveBtn')?.addEventListener('click', savePagamentosFromModal);
+});
+
+appView.addEventListener('click', async (e) => {
+    if (!currentUserProfile) return;
+    const isReadOnly = currentUserProfile.funcao === 'leitura';
+    const actionElement = e.target.closest('button, .faturado-toggle');
+    const isAllowedForReadOnly = e.target.closest('.nav-link, .view-details, .back-to-list, .back-to-list-clientes, #exportPdfBtn, #exportCsvBtn, .sort-btn, #dashboardFilterBtn, #managePagamentosBtn, #managePagamentosCompraBtn');
+
+    if (isReadOnly && actionElement && !isAllowedForReadOnly) {
+        e.preventDefault();
+        e.stopPropagation();
+        showAlertModal('Acesso Negado', 'Você tem permissão apenas para visualização.');
+        return;
+    }
+    
+    const { target } = e;
+    if (target.closest('.nav-link')) { e.preventDefault(); showView(target.closest('.nav-link').dataset.view); }
+    else if (target.closest('.sort-btn')) { 
+        const key = target.closest('.sort-btn').dataset.key;
+        sortState.direction = (sortState.key === key && sortState.direction === 'asc') ? 'desc' : 'asc';
+        sortState.key = key;
+        applyFilters();
+    }
+    else if (target.closest('#reset-sort')) { 
+        sortState = { key: 'dataEmissao', direction: 'desc' }; 
+        applyFilters(); 
+    }
+    else if (target.closest('.view-details')) { showView('lancamentoDetailView', target.closest('.view-details').dataset.id); }
+    else if (target.closest('.back-to-list')) { showView('lancamentosListView'); }
+    else if (target.closest('.edit-cliente-btn')) { showView('clienteDetailView', target.closest('.edit-cliente-btn').dataset.id); }
+    else if (target.closest('.back-to-list-clientes')) { showView('clientesView'); }
+    else if (target.id === 'dashboardFilterBtn') {
+        const startDateValue = document.getElementById('dashboardStartDate').value;
+        const endDateValue = document.getElementById('dashboardEndDate').value;
+        dashboardStartDate = new Date(startDateValue + 'T00:00:00');
+        dashboardEndDate = new Date(endDateValue + 'T00:00:00');
+        showView('dashboardView');
+    }
+    else if (target.id === 'toggleFormBtn') {
+        const formContainer = document.getElementById('formContainer');
+        if (formContainer.style.maxHeight) {
+            formContainer.style.maxHeight = null;
+            setTimeout(() => { if (formContainer) formContainer.innerHTML = ''; }, 500);
+        } else {
+            formContainer.innerHTML = createNovoLancamentoFormHTML(currentUserProfile);
+            updatePagamentosSummary('lancamento'); // Limpa o resumo
+            const clientList = document.getElementById('client-list');
+            if (clientList) clientList.innerHTML = allClientesData.map(c => `<option value="${c.nome}"></option>`).join('');
+            document.getElementById('newDataEmissao').valueAsDate = new Date();
+            formContainer.style.maxHeight = formContainer.scrollHeight + "px";
+        }
+    }
+    else if (target.id === 'cancelNewLancamento') {
+        const formContainer = document.getElementById('formContainer');
+        if(formContainer) {
+            formContainer.style.maxHeight = null;
+            setTimeout(() => formContainer.innerHTML = '', 500);
+        }
+    }
+    else if (target.id === 'analiseIaBtn') {
+        document.getElementById('nfUploadInput').click();
+    }
+    else if (target.closest('.faturado-toggle')) {
+        const button = target.closest('.faturado-toggle');
+        const lancamento = allLancamentosData.find(l => l.firestoreId === button.dataset.id);
+        if (lancamento) await updateDoc(doc(db, 'lancamentos', button.dataset.id), { faturado: lancamento.faturado ? null : new Date() });
+    } 
+    else if (target.id === 'deleteLancamentoBtn') {
+        const form = target.closest('form');
+        if (form) showConfirmModal('Excluir Lançamento?', 'Esta ação é permanente.', async () => {
+            await deleteDoc(doc(db, "lancamentos", form.dataset.id));
+            showAlertModal('Excluído!', 'O lançamento foi removido.');
+            showView('lancamentosListView');
+        });
+    }
+    else if (target.id === 'exportPdfBtn') { generatePrintReport(); }
+    else if (target.id === 'exportCsvBtn') { generateCsvReport(); }
+    else if (target.id === 'backupBtn') { generateBackupFile(); }
+    else if (target.id === 'restoreBtn') { document.getElementById('restoreInput').click(); }
+    else if (target.closest('.delete-variavel-btn')) {
+        const id = target.closest('.delete-variavel-btn').dataset.id;
+        showConfirmModal('Excluir Variável?', 'Esta ação não pode ser desfeita.', async () => {
+            await deleteDoc(doc(db, 'variaveis', id));
+            showAlertModal('Sucesso', 'Variável excluída.');
+        });
+    }
+    else if (target.closest('.delete-cliente-btn')) {
+        const id = target.closest('.delete-cliente-btn').dataset.id;
+        showConfirmModal('Excluir Cliente?', 'Esta ação não pode ser desfeita.', async () => {
+            await deleteDoc(doc(db, 'clientes', id));
+            showAlertModal('Sucesso', 'Cliente excluído.');
+        });
+    }
+    else if (target.closest('.delete-notacompra-btn')) {
+        const id = target.closest('.delete-notacompra-btn').dataset.id;
+        showConfirmModal('Excluir Nota de Compra?', 'Esta ação é permanente.', async () => {
+            await deleteDoc(doc(db, 'notasCompra', id));
+            showAlertModal('Sucesso', 'A nota fiscal de compra foi excluída.');
+        });
+    }
+    else if (target.id === 'addItemBtn') {
+        const container = document.getElementById('itens-container');
+        if (!container) return;
+        const newItemHTML = `
+            <div class="item-row grid grid-cols-12 gap-2 items-center">
+                <div class="col-span-6"><input type="text" placeholder="Descrição do item" class="item-descricao mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+                <div class="col-span-2"><input type="number" value="1" class="item-quantidade mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+                <div class="col-span-3"><input type="number" step="0.01" placeholder="Valor Unit." class="item-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+                <div class="col-span-1 text-right"><button type="button" class="remove-item-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>
+            </div>`;
+        container.insertAdjacentHTML('beforeend', newItemHTML);
+        lucide.createIcons();
+    }
+    else if (target.closest('.remove-item-btn')) {
+        target.closest('.item-row').remove();
+    }
+    else if (target.closest('.link-to-os')) {
+        const lancamentoId = target.closest('.link-to-os').dataset.lancamentoId;
+        if (lancamentoId) {
+            showView('lancamentoDetailView', lancamentoId);
+        }
+    }
+    else if (target.id === 'managePagamentosBtn' || target.id === 'managePagamentosCompraBtn') {
+        openPagamentosModal(target.dataset.modalTarget);
+    }
+    else if (target.id === 'addModalPagamentoBtn') {
+        document.getElementById('modal-pagamentos-list').insertAdjacentHTML('beforeend', createPagamentoRowHTML());
+        lucide.createIcons();
+    }
+    else if (target.closest('.remove-pagamento-btn')) {
+        target.closest('.pagamento-row').remove();
+    }
+});
+
+appView.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentUserProfile || currentUserProfile.funcao === 'leitura') {
+        showAlertModal('Acesso Negado', 'Você não tem permissão para salvar ou alterar dados.');
+        return;
+    }
+    
+    const form = e.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
+
+    try {
+        if (form.id === 'addVariavelForm') {
+            await addDoc(collection(db, "variaveis"), {
+                data: Timestamp.fromDate(new Date(form.querySelector('#newVariavelData').value + 'T12:00:00Z')),
+                descricao: form.querySelector('#newVariavelDescricao').value,
+                valor: parseFloat(form.querySelector('#newVariavelValor').value),
+            });
+            showAlertModal('Sucesso', 'Nova variável cadastrada!');
+            form.reset();
+        }
+        else if (form.id === 'addClienteForm') {
+            await addDoc(collection(db, "clientes"), {
+                nome: form.querySelector('#newClienteNome').value,
+                cnpj: form.querySelector('#newClienteCnpj').value,
+                endereco: form.querySelector('#newClienteEndereco').value,
+                telefone: form.querySelector('#newClienteTelefone').value,
+                email: form.querySelector('#newClienteEmail').value,
+            });
+            showAlertModal('Sucesso', 'Novo cliente cadastrado!');
+            form.reset();
+        }
+        else if (form.id === 'editClienteForm') {
+            const clienteId = form.dataset.id;
+            await updateDoc(doc(db, "clientes", clienteId), {
+                nome: form.querySelector('#editClienteNome').value,
+                cnpj: form.querySelector('#editClienteCnpj').value,
+                endereco: form.querySelector('#editClienteEndereco').value,
+                telefone: form.querySelector('#editClienteTelefone').value,
+                email: form.querySelector('#editClienteEmail').value,
+            });
+            showAlertModal('Sucesso', 'Dados do cliente atualizados!');
+            showView('clientesView');
+        }
+        else if (form.id === 'novoLancamentoForm' || form.id === 'editLancamentoForm') {
+            const isEdit = form.id === 'editLancamentoForm';
+            const prefix = isEdit ? 'edit' : 'new';
+            const pagamentos = JSON.parse(form.querySelector('#hidden-pagamentos-data').value || '[]');
+            const impostos = {
+                iss: parseFloat(form.querySelector(`#${isEdit ? 'edit' : 'new'}ImpostoIss`)?.value) || 0,
+                pis: parseFloat(form.querySelector(`#${isEdit ? 'edit' : 'new'}ImpostoPis`)?.value) || 0,
+                cofins: parseFloat(form.querySelector(`#${isEdit ? 'edit' : 'new'}ImpostoCofins`)?.value) || 0,
+                icms: parseFloat(form.querySelector(`#${isEdit ? 'edit' : 'new'}ImpostoIcms`)?.value) || 0,
+            };
+            const valorTotal = parseFloat(form.querySelector(`#${isEdit ? 'edit' : 'new'}ValorTotal`).value) || 0;
+            let taxaComissao;
+            if (currentUserProfile.funcao === 'padrao' && !isEdit) {
+                taxaComissao = DEFAULT_COMISSION_RATE;
+            } else {
+                taxaComissao = parseFloat(form.querySelector(`#${isEdit ? 'edit' : 'new'}TaxaComissao`)?.value) || 0;
+            }
+            const data = {
+                dataEmissao: Timestamp.fromDate(new Date(form.querySelector(`#${isEdit ? 'edit' : 'new'}DataEmissao`).value + 'T12:00:00Z')),
+                cliente: form.querySelector(`#${isEdit ? 'edit' : 'new'}Cliente`).value,
+                numeroNf: form.querySelector(`#${isEdit ? 'edit' : 'new'}NumeroNf`).value || 'NT',
+                os: form.querySelector(`#${isEdit ? 'edit' : 'new'}Os`).value,
+                descricao: form.querySelector(`#${isEdit ? 'edit' : 'new'}Descricao`).value,
+                valorTotal: valorTotal,
+                taxaComissao: taxaComissao,
+                comissao: valorTotal * (taxaComissao / 100),
+                obs: form.querySelector(`#${isEdit ? 'edit' : 'new'}Obs`).value,
+                impostos: impostos,
+                pagamentos: pagamentos,
+                ...(isEdit ? {} : { faturado: null })
+            };
+            if (isEdit) {
+                await updateDoc(doc(db, "lancamentos", form.dataset.id), data);
+                showAlertModal('Sucesso', 'Alterações salvas.');
+                showView('lancamentoDetailView', form.dataset.id);
+            } else {
+                await addDoc(collection(db, "lancamentos"), data);
+                const formContainer = document.getElementById('formContainer');
+                if (formContainer) {
+                    formContainer.style.maxHeight = null;
+                    setTimeout(() => formContainer.innerHTML = '', 500);
+                }
+            }
+        }
+        else if (form.id === 'addNotaCompraForm') {
+            const pagamentosCompra = JSON.parse(form.querySelector('#hidden-pagamentos-data-compra').value || '[]');
+            const itens = [];
+            let valorTotal = 0;
+            form.querySelectorAll('.item-row').forEach(row => {
+                const descricao = row.querySelector('.item-descricao').value;
+                const quantidade = parseFloat(row.querySelector('.item-quantidade').value) || 1;
+                const valor = parseFloat(row.querySelector('.item-valor').value);
+                if (descricao && !isNaN(valor)) {
+                    itens.push({ descricao, quantidade, valor });
+                    valorTotal += (quantidade * valor);
+                }
+            });
+            if (itens.length === 0) {
+                showAlertModal('Erro', 'Você precisa adicionar pelo menos um item válido.');
+                submitButton.disabled = false; return;
+            }
+            const impostosCompra = {
+                icms: parseFloat(form.querySelector('#newCompraImpostoIcms').value) || 0,
+                ipi: parseFloat(form.querySelector('#newCompraImpostoIpi').value) || 0,
+                pis: parseFloat(form.querySelector('#newCompraImpostoPis').value) || 0,
+                cofins: parseFloat(form.querySelector('#newCompraImpostoCofins').value) || 0,
+            };
+            const data = new Date(form.querySelector('#newNotaData').value + 'T12:00:00Z');
+            await addDoc(collection(db, "notasCompra"), {
+                osId: form.querySelector('#newNotaOsId').value,
+                numeroNf: form.querySelector('#newNotaNumeroNf').value,
+                dataEmissao: Timestamp.fromDate(data),
+                chaveAcesso: form.querySelector('#newNotaChaveAcesso').value,
+                valorTotal: valorTotal,
+                itens: itens,
+                impostos: impostosCompra,
+                pagamentos: pagamentosCompra
+            });
+            form.reset();
+            const itensContainer = document.getElementById('itens-container');
+            if (itensContainer) itensContainer.innerHTML = '';
+            updatePagamentosSummary('compra');
+            document.getElementById('addItemBtn')?.click();
+            showAlertModal('Sucesso!', 'Nota Fiscal de compra salva.');
+        }
+    } catch (error) {
+        showAlertModal("Erro ao Salvar", error.message);
+    } finally {
+        if (submitButton) submitButton.disabled = false;
+    }
+});
+
+appView.addEventListener('change', async (e) => {
+    if (e.target.classList.contains('pagamento-metodo')) {
+        const row = e.target.closest('.pagamento-row');
+        const parcelasInput = row.querySelector('.pagamento-parcelas');
+        if (e.target.value === 'Cartão de Crédito' || e.target.value === 'Boleto') {
+            parcelasInput.classList.remove('hidden');
+            parcelasInput.value = parcelasInput.value || 1;
+        } else {
+            parcelasInput.classList.add('hidden');
+            parcelasInput.value = '';
+        }
+    }
+    if (!currentUserProfile || currentUserProfile.funcao === 'leitura') {
+        if(e.target.id === 'nfUploadInput' || e.target.id === 'restoreInput') {
+             showAlertModal('Acesso Negado', 'Você não tem permissão para alterar dados.');
+        }
+        return;
+    }
+    if (e.target.id === 'nfUploadInput') {
+        const files = e.target.files;
+        if (!files.length) return;
+        showAlertModal('Processando...', `Analisando ${files.length} arquivo(s). Aguarde...`);
+        let successCount = 0, errorCount = 0;
+        for (const file of files) {
+            try {
+                const imageData = await extractPdfImage(file);
+                const data = await callGeminiForAnalysis(imageData);
+                let os_pc = data.os || '';
+                if (data.pc) { os_pc = os_pc ? `${os_pc} / ${data.pc}` : data.pc; }
+                const valorTotal = data.valorTotal || 0;
+                await addDoc(collection(db, "lancamentos"), {
+                    dataEmissao: Timestamp.fromDate(new Date(data.dataEmissao + 'T12:00:00Z')),
+                    cliente: data.cliente,
+                    numeroNf: data.numeroNf || 'NT',
+                    os: os_pc,
+                    descricao: data.observacoes,
+                    valorTotal, taxaComissao: 0.5, comissao: valorTotal * (0.5 / 100),
+                    faturado: null, obs: `Analisado por IA a partir de ${file.name}`
+                });
+                successCount++;
+            } catch (error) {
+                console.error(`Erro ao processar ${file.name}:`, error);
+                errorCount++;
+            }
+        }
+        closeModal('alertModal');
+        showAlertModal('Concluído', `${successCount} arquivo(s) processado(s) com sucesso.${errorCount > 0 ? ` ${errorCount} falharam.` : ''}`);
+        e.target.value = '';
+    }
+    if (e.target.id === 'restoreInput') {
+        handleRestoreFile(e.target.files[0]);
+        e.target.value = '';
+    }
+});
