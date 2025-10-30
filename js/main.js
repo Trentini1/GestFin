@@ -368,13 +368,34 @@ function updateSortUI() {
 
 function applyNfFilters() {
     let filteredData = [...allNotasCompraData];
+    
+    // Filtro de Ano
     if (nfSelectedYearFilter !== null) {
         filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getFullYear() === nfSelectedYearFilter);
     }
+    // Filtro de Mês
     if (nfSelectedMonthFilter !== null) {
         filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getMonth() === nfSelectedMonthFilter);
     }
+
+    // ======================================================
+    //  NOVA LÓGICA DE BUSCA
+    // ======================================================
+    if (nfSearchTerm) {
+        const lowerCaseSearch = nfSearchTerm.toLowerCase();
+        filteredData = filteredData.filter(nf =>
+            nf.numeroNf?.toLowerCase().includes(lowerCaseSearch) ||  // Busca por Número da NF
+            nf.osId?.toLowerCase().includes(lowerCaseSearch) ||      // Busca por O.S. Vinculada
+            nf.comprador?.toLowerCase().includes(lowerCaseSearch) || // Busca por Comprador
+            nf.valorTotal.toString().includes(lowerCaseSearch)    // Busca por Valor Total
+        );
+    }
+    // ======================================================
+
+    // Ordenação (mantida)
     filteredData.sort((a, b) => b.dataEmissao.toDate() - a.dataEmissao.toDate());
+    
+    // Renderiza a tabela
     const tableBody = document.getElementById('notasCompraTableBody');
     if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(filteredData, allLancamentosData);
 }
@@ -382,18 +403,35 @@ function applyNfFilters() {
 function populateNfFiltersAndApply() {
     const monthFilter = document.getElementById('nfMonthFilter');
     const yearFilter = document.getElementById('nfYearFilter');
-    if (!monthFilter || !yearFilter) return;
+    const searchInput = document.getElementById('nfSearchInput'); // <-- NOVO
 
+    // Atualiza a verificação
+    if (!monthFilter || !yearFilter || !searchInput) return; 
+
+    // Lógica dos filtros de Ano (mantida)
     const years = [...new Set(allNotasCompraData.map(l => l.dataEmissao?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
     yearFilter.innerHTML = '<option value="">Todos os Anos</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
     yearFilter.value = nfSelectedYearFilter === null ? '' : nfSelectedYearFilter;
 
+    // Lógica dos filtros de Mês (mantida)
     const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
     monthFilter.innerHTML = '<option value="">Todos os Meses</option>' + monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
     monthFilter.value = nfSelectedMonthFilter === null ? '' : nfSelectedMonthFilter;
 
+    // "Ouvintes" de eventos (mantidos)
     monthFilter.onchange = () => { nfSelectedMonthFilter = monthFilter.value === '' ? null : parseInt(monthFilter.value); applyNfFilters(); };
     yearFilter.onchange = () => { nfSelectedYearFilter = yearFilter.value === '' ? null : parseInt(yearFilter.value); applyNfFilters(); };
+
+    // ======================================================
+    //  NOVO "OUVINTE" PARA A BUSCA
+    // ======================================================
+    searchInput.oninput = () => { 
+        nfSearchTerm = searchInput.value; 
+        applyNfFilters(); 
+    };
+    // ======================================================
+    
+    // Aplica os filtros na primeira carga
     applyNfFilters();
 }
 
