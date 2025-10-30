@@ -36,15 +36,17 @@ let selectedMonthFilter = null;
 let selectedYearFilter = null;
 let searchTerm = '';
 let sortState = { key: 'dataEmissao', direction: 'desc' };
+
+// Filtros da tela de Notas Fiscais
 let nfSelectedMonthFilter = null;
 let nfSelectedYearFilter = null;
+let nfSearchTerm = ''; // <-- Sua nova linha
+
+// Filtros da tela de Variáveis
 let variaveisSelectedMonthFilter = null;
 let variaveisSelectedYearFilter = null;
-let nfSelectedMonthFilter = null;
-let nfSelectedYearFilter = null;
-let nfSearchTerm = ''; // <-- NOVA LINHA
-let variaveisSelectedMonthFilter = null;
-let variaveisSelectedYearFilter = null;
+
+// Datas do Dashboard
 const hoje = new Date();
 const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
 let dashboardStartDate = primeiroDiaDoMes;
