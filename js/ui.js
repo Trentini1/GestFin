@@ -351,6 +351,11 @@ export const createNotasFiscaisViewHTML = (lancamentos) => {
     return `
     <div class="space-y-6 max-w-6xl mx-auto">
         <h2 class="text-2xl font-bold">Gerenciar Notas Fiscais de Compra</h2>
+        
+        <div class="relative">
+            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i>
+            <input type="search" id="nfSearchInput" placeholder="Buscar por Nº NF, O.S. Vinculada, Comprador ou Valor..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+        </div>
         <form id="addNotaCompraForm" class="bg-white p-6 rounded-lg shadow space-y-4">
             <h3 class="text-lg font-medium">Adicionar Nova NF de Compra</h3>
             <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
