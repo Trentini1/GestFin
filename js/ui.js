@@ -23,6 +23,7 @@ export const createDashboardHTML = (dashboardData, totalVariaveis, startDate, en
                 <label for="dashboardEndDate" class="text-sm font-medium">Até:</label>
                 <input type="date" id="dashboardEndDate" value="${formatDateForInput(endDate)}" class="border-slate-300 rounded-md shadow-sm text-sm">
                 <button id="dashboardFilterBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm">Filtrar</button>
+                <button id="exportDashboardBtn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">Exportar CSV</button>
             </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -54,486 +55,500 @@ export const createLancamentosListHTML = (userProfile) => {
         <div class="relative"><i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i><input type="search" id="searchInput" placeholder="Buscar por cliente, NF ou O.S..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></div>
         <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
             <h2 class="text-2xl font-bold">Histórico de Lançamentos</h2><div id="sort-reset-container" class="hidden items-center"></div>
-            <div class="flex items-center gap-4"><div class="flex items-center gap-2"><label for="monthFilter" class="text-sm font-medium">Mês:</label><select id="monthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div><div class="flex items-center gap-2"><label for="yearFilter" class="text-sm font-medium">Ano:</label><select id="yearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div></div>
+            <div class="flex items-center gap-4"><div class="flex items-center gap-2"><label for="monthFilter" class="text-sm font-medium">Mês:</label><select id="monthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div><div class="flex items-center gap-2"><label for="yearFilter" class="text-sm font-medium">Ano:</label><select id="yearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div>
+            <button id="exportLancamentosBtn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">Exportar CSV</button></div>
         </div>
         <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
             <table class="min-w-full divide-y divide-slate-200">
                 <thead class="bg-slate-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="dataEmissao">Data Emissão <i data-lucide="arrow-down-up" class="h-4 w-4"></i></button></th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="cliente">Cliente <i data-lucide="arrow-down-up" class="h-4 w-4"></i></button></th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">NF</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">O.S/PC</th><th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Giro Total</th>
-                        ${userProfile.funcao !== 'padrao' ? `<th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Comissão</th>` : ''}
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Faturado</th>
-                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="cliente">Cliente</button></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="numeroNf">NF</button></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="os">OS</button></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="valorTotal">Valor</button></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"><button class="flex items-center gap-2 sort-btn" data-key="comissao">Comissão</button></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ações</th>
                     </tr>
                 </thead>
                 <tbody id="lancamentosTableBody" class="bg-white divide-y divide-slate-200"></tbody>
             </table>
         </div>
-        <div id="pagination-controls" class="flex justify-between items-center text-sm"></div>
-        <div class="mt-8 bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Exportar Relatório</h3>
-            <div class="flex space-x-4">
-                <button id="exportPdfBtn" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="printer" class="w-4 h-4 mr-2"></i> Imprimir / Salvar PDF</button>
-                <button id="exportCsvBtn" class="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="file-spreadsheet" class="w-4 h-4 mr-2"></i> Exportar para CSV (Excel)</button>
-            </div>
-        </div>
-        ${!isReadOnly ? `
-        <div class="mt-8 bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Backup e Restauração</h3>
-            <p class="text-sm text-slate-500 mb-4">Salve todos os seus dados ou restaure a partir de um backup.</p>
-            <div class="flex space-x-4">
-                <button id="backupBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="download" class="w-4 h-4 mr-2"></i> Fazer Backup (JSON)</button>
-                <button id="restoreBtn" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg flex items-center"><i data-lucide="upload" class="w-4 h-4 mr-2"></i> Restaurar Backup</button>
-                <input type="file" id="restoreInput" class="hidden" accept=".json">
-            </div>
-        </div>
-        ` : ''}
-    </div>`;
-};
-
-export const createNovoLancamentoFormHTML = (userProfile) => {
-    const showFinancials = userProfile.funcao !== 'padrao';
-    return `
-      <form id="novoLancamentoForm" class="p-6 bg-slate-100 border-t-2 border-b-2 border-slate-200 space-y-4">
-        <h3 class="text-xl font-semibold text-slate-800">Novo Lançamento Manual</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div><label for="newDataEmissao" class="block text-sm font-medium text-slate-700">Data de Emissão</label><input type="date" id="newDataEmissao" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-            <div><label for="newCliente" class="block text-sm font-medium text-slate-700">Cliente</label><input list="client-list" id="newCliente" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required><datalist id="client-list"></datalist></div>
-            <div><label for="newNumeroNf" class="block text-sm font-medium text-slate-700">Número NF</label><input type="text" id="newNumeroNf" placeholder="NT se não houver" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            <div><label for="newOs" class="block text-sm font-medium text-slate-700">OS / PC</label><input type="text" id="newOs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="md:col-span-2"><label for="newDescricao" class="block text-sm font-medium text-slate-700">Motor / Descrição do Serviço</label><input type="text" id="newDescricao" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            <div><label for="newValorTotal" class="block text-sm font-medium text-slate-700">Valor Total</label><input type="number" step="0.01" id="newValorTotal" placeholder="0.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-        </div>
-        <div class="pt-4 border-t">
-            <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento</h4>
-            <div id="pagamentos-summary" class="text-sm text-slate-500 p-3 bg-white rounded-md border">Nenhum pagamento adicionado.</div>
-            <input type="hidden" id="hidden-pagamentos-data" name="pagamentos">
-            <button type="button" data-modal-target="lancamento" id="managePagamentosBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
-                <i data-lucide="credit-card" class="w-4 h-4 mr-1"></i> Gerenciar Pagamentos
-            </button>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
-             <div class="md:col-span-2"><label for="newObs" class="block text-sm font-medium text-slate-700">Observação</label><textarea id="newObs" rows="2" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></textarea></div>
-            ${showFinancials ? `<div><label for="newTaxaComissao" class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label><input type="number" step="0.01" id="newTaxaComissao" value="${DEFAULT_COMISSION_RATE}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>` : ''}
-        </div>
-        <div class="flex justify-end gap-3 pt-4 border-t">
-          <button type="button" id="cancelNewLancamento" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50">Cancelar</button>
-          <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">Salvar Lançamento</button>
-        </div>
-      </form>
+        <div id="pagination-controls" class="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 sm:px-6"></div>
     `;
 };
 
-export const createLancamentosTableRowsHTML = (lancamentos, userProfile) => {
-    const isReadOnly = userProfile.funcao === 'leitura';
-    const colspan = userProfile.funcao === 'padrao' ? 7 : 8;
-    if (!lancamentos.length) return `<tr><td colspan="${colspan}" class="text-center py-10 text-slate-500">Nenhum lançamento encontrado para os filtros selecionados.</td></tr>`;
-    
-    return lancamentos.map(l => `
-        <tr class="hover:bg-slate-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l.dataEmissao?.toDate().toLocaleDateString('pt-BR')}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${l.cliente}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l.numeroNf || 'NT'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l.os || ''}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(getGiroTotal(l))}</td>
-            ${userProfile.funcao !== 'padrao' ? `<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(l.comissao)}</td>` : ''}
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500"><div class="flex items-center"><button data-id="${l.firestoreId}" class="faturado-toggle relative inline-flex items-center h-6 rounded-full w-11 transition-colors ${l.faturado ? 'bg-green-500' : 'bg-gray-200'}" ${isReadOnly ? 'disabled' : 'cursor-pointer'}><span class="inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${l.faturado ? 'translate-x-6' : 'translate-x-1'}"></span></button><span class="ml-2">${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</span></div></td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"><button class="text-indigo-600 hover:text-indigo-900 view-details" data-id="${l.firestoreId}">${isReadOnly ? 'Ver Detalhes' : 'Editar'}</button></td>
-        </tr>`).join('');
-};
-
-export const createLancamentoDetailHTML = (data, userProfile) => {
-    const { lancamento, custosDaOs } = data;
-    const isReadOnly = userProfile.funcao === 'leitura';
-    const valorTotal = getGiroTotal(lancamento);
-    const totalCustos = custosDaOs.reduce((sum, nota) => sum + nota.valorTotal, 0);
-    const impostos = lancamento.impostos || {};
-    const valorIss = valorTotal * ((impostos.iss || 0) / 100);
-    const valorPis = valorTotal * ((impostos.pis || 0) / 100);
-    const valorCofins = valorTotal * ((impostos.cofins || 0) / 100);
-    const valorIcms = valorTotal * ((impostos.icms || 0) / 100);
-    const totalImpostos = valorIss + valorPis + valorCofins + valorIcms;
-    const resultadoFinal = valorTotal - totalCustos - totalImpostos;
-
-    const pagamentosHTML = (lancamento.pagamentos || []).map(p => `
-        <li class="flex justify-between items-center text-sm">
-            <span>${p.metodo}${p.parcelas > 1 ? ` (${p.parcelas}x)` : ''}</span>
-            <span class="font-medium">${formatCurrency(p.valor)}</span>
-        </li>
-    `).join('');
-
-    const auditInfoHTML = `
-        <div class="text-xs text-slate-400 mt-2 text-right">
-            ${lancamento.criadoPor ? `Criado por ${lancamento.criadoPor} em ${lancamento.criadoEm?.toDate().toLocaleDateString('pt-BR') || ''}.` : ''}
-            ${lancamento.editadoPor ? `<br>Última edição por ${lancamento.editadoPor} em ${lancamento.editadoEm?.toDate().toLocaleString('pt-BR') || ''}.` : ''}
-        </div>
-    `;
-
-    return `
-    <button class="back-to-list flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
-    <form id="editLancamentoForm" data-id="${lancamento.firestoreId}" class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto space-y-6">
-        <h2 class="text-2xl font-bold">${isReadOnly ? 'Detalhes do Lançamento' : 'Editar Lançamento'}</h2>
-        <fieldset ${isReadOnly ? 'disabled' : ''}>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div><label class="block text-sm font-medium text-slate-700">Data Emissão</label><input type="date" id="editDataEmissao" value="${lancamento.dataEmissao.toDate().toISOString().split('T')[0]}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                <div><label class="block text-sm font-medium text-slate-700">Cliente</label><input type="text" id="editCliente" value="${lancamento.cliente}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                <div><label class="block text-sm font-medium text-slate-700">Nº NF</label><input type="text" id="editNumeroNf" value="${lancamento.numeroNf || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                <div><label class="block text-sm font-medium text-slate-700">O.S/PC</label><input type="text" id="editOs" value="${lancamento.os || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
+export const createNovoLancamentoFormHTML = () => `
+    <form id="newLancamentoForm" class="bg-white shadow-md rounded-lg p-6 space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label for="newDataEmissao" class="block text-sm font-medium text-slate-700">Data de Emissão</label>
+                <input type="date" id="newDataEmissao" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Motor</label><input type="text" id="editDescricao" value="${lancamento.descricao || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                <div><label class="block text-sm font-medium text-slate-700">Valor Total</label><input type="number" step="0.01" id="editValorTotal" value="${valorTotal}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
+            <div>
+                <label for="newCliente" class="block text-sm font-medium text-slate-700">Cliente</label>
+                <input type="text" id="newCliente" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
             </div>
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento</h4>
-                <div id="pagamentos-summary" class="text-sm text-slate-500 p-3 bg-gray-50 rounded-md border">Nenhum pagamento adicionado.</div>
-                <input type="hidden" id="hidden-pagamentos-data" name="pagamentos" value='${JSON.stringify(lancamento.pagamentos || [])}'>
-                ${!isReadOnly ? `<button type="button" data-modal-target="lancamento" id="managePagamentosBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center"><i data-lucide="credit-card" class="w-4 h-4 mr-1"></i> Gerenciar Pagamentos</button>`: ''}
+            <div>
+                <label for="newNumeroNf" class="block text-sm font-medium text-slate-700">Número NF</label>
+                <input type="text" id="newNumeroNf" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" placeholder="NT">
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
-                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Observação</label><textarea id="editObs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100">${lancamento.obs || ''}</textarea></div>
-                ${userProfile.funcao !== 'padrao' ? `
-                <div><label class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label><input type="number" step="0.01" id="editTaxaComissao" value="${lancamento.taxaComissao ?? DEFAULT_COMISSION_RATE}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm disabled:bg-slate-100"></div>
-                ` : ''}
+            <div>
+                <label for="newOs" class="block text-sm font-medium text-slate-700">OS</label>
+                <input type="text" id="newOs" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
             </div>
-        </fieldset>
-        ${!isReadOnly ? `
-        <div class="flex justify-between items-center pt-4 border-t">
-            <button type="button" id="deleteLancamentoBtn" class="text-red-600 hover:underline">Excluir Lançamento</button>
-            <div class="flex flex-col items-end">
-                 <button type="submit" class="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button>
-                 ${auditInfoHTML}
+            <div class="md:col-span-2">
+                <label for="newDescricao" class="block text-sm font-medium text-slate-700">Descrição</label>
+                <textarea id="newDescricao" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></textarea>
+            </div>
+            <div>
+                <label for="newValorTotal" class="block text-sm font-medium text-slate-700">Valor Total</label>
+                <input type="number" step="0.01" id="newValorTotal" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
+            </div>
+            <div>
+                <label for="newTaxaComissao" class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label>
+                <input type="number" step="0.01" id="newTaxaComissao" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" value="0.5">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-slate-700 mb-2">Impostos (%)</label>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <label for="newImpostoIss" class="block text-xs text-slate-600">ISS</label>
+                        <input type="number" step="0.01" id="newImpostoIss" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                    </div>
+                    <div>
+                        <label for="newImpostoPis" class="block text-xs text-slate-600">PIS</label>
+                        <input type="number" step="0.01" id="newImpostoPis" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                    </div>
+                    <div>
+                        <label for="newImpostoCofins" class="block text-xs text-slate-600">COFINS</label>
+                        <input type="number" step="0.01" id="newImpostoCofins" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                    </div>
+                    <div>
+                        <label for="newImpostoIcms" class="block text-xs text-slate-600">ICMS</label>
+                        <input type="number" step="0.01" id="newImpostoIcms" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
+                    </div>
+                </div>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-slate-700 mb-2">Pagamentos</label>
+                <div id="pagamentos-list" class="space-y-3"></div>
+                <button type="button" id="addPagamentoBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
+                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento
+                </button>
+                <input type="hidden" id="hidden-pagamentos-data" name="pagamentos">
+            </div>
+            <div class="md:col-span-2">
+                <label for="newObs" class="block text-sm font-medium text-slate-700">Observações</label>
+                <textarea id="newObs" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></textarea>
             </div>
         </div>
-        ` : ''}
-    </form>
-    <div class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto mt-8">
-        <h3 class="text-xl font-bold mb-4">Resumo Financeiro</h3>
-        <div class="mb-6">
-            <h4 class="font-semibold text-slate-800 mb-2">Pagamentos Recebidos</h4>
-            <ul class="space-y-1 text-slate-600">
-                ${pagamentosHTML || '<li>Nenhuma forma de pagamento registrada.</li>'}
-            </ul>
+        <div class="flex justify-end gap-4">
+            <button type="button" id="cancelFormBtn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancelar</button>
+            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Salvar</button>
         </div>
-        <h4 class="font-semibold text-slate-800 mb-2">Análise da O.S.</h4>
-        ${custosDaOs.length > 0 ? `<div class="space-y-4">${custosDaOs.map(nota => `<div class="border p-4 rounded-md bg-slate-50"><p class="font-semibold">NF de Compra: ${nota.numeroNf} <span class="font-normal text-slate-500">- ${nota.dataEmissao.toDate().toLocaleDateString('pt-BR')}</span></p><ul class="list-disc list-inside mt-2 text-sm text-slate-600">${(nota.itens || []).map(item => `<li>${item.quantidade || 1}x ${item.descricao}: <span class="font-medium">${formatCurrency(item.valor * (item.quantidade || 1))}</span></li>`).join('')}</ul></div>`).join('')}</div>` : `<p class="text-slate-500">Nenhuma nota fiscal de compra foi vinculada a esta O.S. ainda.</p>`}
-        <div class="mt-6 pt-4 border-t-2 space-y-2">
-            <div class="flex justify-between items-center text-lg"><span class="font-medium text-slate-600">Total de Custos:</span><span class="font-bold text-red-600">${formatCurrency(totalCustos)}</span></div>
-            <div class="flex justify-between items-center text-lg"><span class="font-medium text-slate-600">Total de Impostos:</span><span class="font-bold text-orange-600">${formatCurrency(totalImpostos)}</span></div>
-            <div class="flex justify-between items-center text-xl mt-2"><span class="font-bold text-slate-800">Resultado Final:</span><span class="font-extrabold ${resultadoFinal >= 0 ? 'text-green-700' : 'text-red-700'}">${formatCurrency(resultadoFinal)}</span></div>
-        </div>
-    </div>`;
-};
-
-
-export const createVariaveisViewHTML = (userProfile) => {
-    const isNotAdmin = userProfile.funcao !== 'admin';
-    return `
-    <div class="space-y-6 max-w-4xl mx-auto">
-        <h2 class="text-2xl font-bold">Gerenciar Variáveis</h2>
-        <form id="addVariavelForm" class="bg-white p-6 rounded-lg shadow space-y-4" ${isNotAdmin ? 'hidden' : ''}>
-            <h3 class="text-lg font-medium">Adicionar Nova Variável</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><label class="block text-sm font-medium text-slate-700">Data</label><input type="date" id="newVariavelData" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div><label class="block text-sm font-medium text-slate-700">Descrição</label><input type="text" id="newVariavelDescricao" required placeholder="Ex: Reembolso de viagem" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div><label class="block text-sm font-medium text-slate-700">Valor (R$)</label><input type="number" step="0.01" id="newVariavelValor" required placeholder="150.00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            </div>
-            <div class="flex justify-end"><button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Variável</button></div>
-        </form>
-        <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <h3 class="text-lg font-medium">Histórico de Variáveis</h3>
-            <div class="flex items-center gap-4">
-                <div class="flex items-center gap-2"><label for="variaveisMonthFilter" class="text-sm font-medium">Mês:</label><select id="variaveisMonthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div>
-                <div class="flex items-center gap-2"><label for="variaveisYearFilter" class="text-sm font-medium">Ano:</label><select id="variaveisYearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div>
-            </div>
-        </div>
-        <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
-            <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Descrição</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th>
-                        <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
-                    </tr>
-                </thead>
-                <tbody id="variaveisTableBody"></tbody>
-            </table>
-        </div>
-    </div>`;
-};
-
-export const createVariaveisTableRowsHTML = (variaveis, userProfile) => {
-    const isNotAdmin = userProfile.funcao !== 'admin';
-    if (!variaveis.length) return '<tr><td colspan="4" class="text-center py-10 text-slate-500">Nenhuma variável encontrada para os filtros.</td></tr>';
-    return variaveis.sort((a,b) => b.data.toDate() - a.data.toDate()).map(v => `
-        <tr class="hover:bg-slate-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${v.data.toDate().toLocaleDateString('pt-BR')}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${v.descricao}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(v.valor)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button class="text-red-600 hover:text-red-900 delete-variavel-btn" data-id="${v.firestoreId}" ${isNotAdmin ? 'hidden' : ''}>Excluir</button>
-            </td>
-        </tr>`).join('');
-};
-
-export const createClientesViewHTML = () => `
-    <div class="space-y-6 max-w-4xl mx-auto">
-        <h2 class="text-2xl font-bold">Gerenciar Clientes</h2>
-        <form id="addClienteForm" class="bg-white p-6 rounded-lg shadow space-y-4">
-            <h3 class="text-lg font-medium">Adicionar Novo Cliente</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-slate-700">Nome / Razão Social</label><input type="text" id="newClienteNome" required placeholder="Nome completo do cliente" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div><label class="block text-sm font-medium text-slate-700">CNPJ / CPF</label><input type="text" id="newClienteCnpj" placeholder="00.000.000/0000-00" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            </div>
-            <div><label class="block text-sm font-medium text-slate-700">Endereço</label><input type="text" id="newClienteEndereco" placeholder="Rua, Nº, Bairro, Cidade - Estado" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label class="block text-sm font-medium text-slate-700">Telefone</label><input type="tel" id="newClienteTelefone" placeholder="(41) 99999-9999" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div><label class="block text-sm font-medium text-slate-700">E-mail</label><input type="email" id="newClienteEmail" placeholder="contato@cliente.com" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            </div>
-            <div class="flex justify-end"><button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Cliente</button></div>
-        </form>
-        <div class="bg-white p-6 rounded-lg shadow">
-            <h3 class="text-lg font-medium mb-4">Clientes Cadastrados</h3>
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-200">
-                    <thead class="bg-slate-50">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">CNPJ/CPF</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Telefone</th>
-                            <th class="relative px-6 py-3"><span class="sr-only">Ações</span></th>
-                        </tr>
-                    </thead>
-                    <tbody id="clientesTableBody"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>`;
-
-export const createClientesTableRowsHTML = (clientes) => {
-    if (!clientes.length) return '<tr><td colspan="4" class="text-center py-10 text-slate-500">Nenhum cliente cadastrado.</td></tr>';
-    return clientes.sort((a,b) => a.nome.localeCompare(b.nome)).map(c => `
-        <tr class="hover:bg-slate-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${c.nome}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${c.cnpj || '-'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${c.telefone || '-'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
-                <button class="text-indigo-600 hover:text-indigo-900 edit-cliente-btn" data-id="${c.firestoreId}">Editar</button>
-                <button class="text-red-600 hover:text-red-900 delete-cliente-btn" data-id="${c.firestoreId}">Excluir</button>
-            </td>
-        </tr>`).join('');
-};
-
-export const createClienteDetailHTML = (cliente) => `
-    <button class="back-to-list-clientes flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium mb-6"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista de clientes</button>
-    <form id="editClienteForm" data-id="${cliente.firestoreId}" class="bg-white p-8 rounded-lg shadow max-w-4xl mx-auto space-y-6">
-        <h2 class="text-2xl font-bold">Editar Cliente</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><label class="block text-sm font-medium text-slate-700">Nome / Razão Social</label><input type="text" id="editClienteNome" value="${cliente.nome || ''}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            <div><label class="block text-sm font-medium text-slate-700">CNPJ / CPF</label><input type="text" id="editClienteCnpj" value="${cliente.cnpj || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-        </div>
-        <div><label class="block text-sm font-medium text-slate-700">Endereço</label><input type="text" id="editClienteEndereco" value="${cliente.endereco || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><label class="block text-sm font-medium text-slate-700">Telefone</label><input type="tel" id="editClienteTelefone" value="${cliente.telefone || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            <div><label class="block text-sm font-medium text-slate-700">E-mail</label><input type="email" id="editClienteEmail" value="${cliente.email || ''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-        </div>
-        <div class="flex justify-end pt-4 border-t"><button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button></div>
     </form>
 `;
 
-export const createNotasFiscaisViewHTML = (lancamentos) => {
-    const osList = [...new Set(lancamentos.map(l => l.os).filter(Boolean))];
+export const createLancamentosTableRowsHTML = (lancamentos) => lancamentos.map(l => {
+    const dataEmissao = l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || 'N/A';
+    const status = l.faturado ? 'Faturado' : 'Pendente';
     return `
-    <div class="space-y-6 max-w-6xl mx-auto">
-        <h2 class="text-2xl font-bold">Gerenciar Notas Fiscais de Compra</h2>
-        
-        <div class="relative">
-            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i>
-            <input type="search" id="nfSearchInput" placeholder="Buscar por Nº NF, O.S. Vinculada, Comprador ou Valor..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-        </div>
-        <form id="addNotaCompraForm" class="bg-white p-6 rounded-lg shadow space-y-4">
-            <h3 class="text-lg font-medium">Adicionar Nova NF de Compra</h3>
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div><label class="block text-sm font-medium text-slate-700">O.S. Vinculada</label><input type="text" id="newNotaOsId" required list="os-list" placeholder="Nº da O.S." class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"><datalist id="os-list">${osList.map(os => `<option value="${os}"></option>`).join('')}</datalist></div>
-                <div><label class="block text-sm font-medium text-slate-700">Nº da NF</label><input type="text" id="newNotaNumeroNf" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div><label class="block text-sm font-medium text-slate-700">Data Emissão</label><input type="date" id="newNotaData" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+        <tr data-id="${l.firestoreId}">
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${dataEmissao}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${l.cliente || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${l.numeroNf || 'NT'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${l.os || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${formatCurrency(l.valorTotal)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${formatCurrency(l.comissao)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm ${status === 'Faturado' ? 'text-green-600' : 'text-yellow-600'}">${status}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                <button class="view-btn text-indigo-600 hover:text-indigo-900 mr-2"><i data-lucide="eye" class="w-4 h-4"></i></button>
+                <button class="edit-btn text-blue-600 hover:text-blue-900 mr-2"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                <button class="delete-btn text-red-600 hover:text-red-900"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </td>
+        </tr>
+    `;
+}).join('');
+
+export const createLancamentoDetailHTML = (lancamento, userProfile) => {
+    const isEditable = userProfile.funcao !== 'leitura';
+    const dataEmissao = lancamento.dataEmissao?.toDate().toLocaleDateString('pt-BR') || 'N/A';
+    const criadoEm = lancamento.criadoEm?.toDate().toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || 'N/A';
+    const editadoEm = lancamento.editadoEm?.toDate().toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || 'N/A';
+    const faturadoEm = lancamento.faturado?.toDate().toLocaleDateString('pt-BR') || 'Pendente';
+    return `
+        <div class="bg-white shadow-md rounded-lg p-6">
+            <div class="flex justify-between items-start mb-6">
+                <h2 class="text-2xl font-bold">Detalhes do Lançamento</h2>
+                <div class="space-x-2">
+                    ${isEditable ? `<button id="editLancamentoBtn" class="text-blue-600 hover:text-blue-900"><i data-lucide="edit" class="w-5 h-5"></i></button>
+                    <button id="deleteLancamentoBtn" class="text-red-600 hover:text-red-900"><i data-lucide="trash-2" class="w-5 h-5"></i></button>` : ''}
+                    <button id="backToListBtn" class="text-slate-600 hover:text-slate-900"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                    <label for="newNotaComprador" class="block text-sm font-medium text-slate-700">Comprador</label>
-                    <select id="newNotaComprador" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                        <option value="Erick">Erick</option>
-                        <option value="Fernando">Fernando</option>
-                        <option value="Lourival">Lourival</option>
-                    </select>
+                    <p class="text-sm text-slate-500">Data de Emissão</p>
+                    <p class="text-lg font-medium">${dataEmissao}</p>
                 </div>
-                <div><label class="block text-sm font-medium text-slate-700">Chave de Acesso</label><input type="text" id="newNotaChaveAcesso" placeholder="44 dígitos (opcional)" maxlength="44" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            </div>
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento da Compra</h4>
-                <div id="pagamentos-summary-compra" class="text-sm text-slate-500 p-3 bg-gray-50 rounded-md border">Nenhum pagamento adicionado.</div>
-                <input type="hidden" id="hidden-pagamentos-data-compra" name="pagamentos">
-                <button type="button" data-modal-target="compra" id="managePagamentosCompraBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
-                    <i data-lucide="credit-card" class="w-4 h-4 mr-1"></i> Gerenciar Pagamentos
-                </button>
-            </div>
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium mb-2">Itens da Nota</h4>
-                <div class="grid grid-cols-12 gap-x-2 gap-y-1 text-sm font-medium text-slate-600 px-1">
-                    <div class="col-span-6">Descrição do item</div>
-                    <div class="col-span-2">Qtd.</div>
-                    <div class="col-span-3">Valor Unit.</div>
+                <div>
+                    <p class="text-sm text-slate-500">Cliente</p>
+                    <p class="text-lg font-medium">${lancamento.cliente || 'N/A'}</p>
                 </div>
-                <div id="itens-container" class="space-y-2"></div>
-                <button type="button" id="addItemBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
-                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Item
-                </button>
+                <div>
+                    <p class="text-sm text-slate-500">Número NF</p>
+                    <p class="text-lg font-medium">${lancamento.numeroNf || 'NT'}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">OS</p>
+                    <p class="text-lg font-medium">${lancamento.os || 'N/A'}</p>
+                </div>
+                <div class="md:col-span-2">
+                    <p class="text-sm text-slate-500">Descrição</p>
+                    <p class="text-lg">${lancamento.descricao || 'N/A'}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">Valor Total</p>
+                    <p class="text-lg font-medium">${formatCurrency(lancamento.valorTotal)}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">Taxa de Comissão</p>
+                    <p class="text-lg font-medium">${lancamento.taxaComissao}%</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">Comissão</p>
+                    <p class="text-lg font-medium">${formatCurrency(lancamento.comissao)}</p>
+                </div>
+                <div class="md:col-span-2">
+                    <p class="text-sm text-slate-500 mb-2">Impostos</p>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                            <p class="text-xs text-slate-600">ISS</p>
+                            <p>${lancamento.impostos?.iss || 0}%</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-600">PIS</p>
+                            <p>${lancamento.impostos?.pis || 0}%</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-600">COFINS</p>
+                            <p>${lancamento.impostos?.cofins || 0}%</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-600">ICMS</p>
+                            <p>${lancamento.impostos?.icms || 0}%</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="md:col-span-2">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-sm text-slate-500">Pagamentos</p>
+                        ${isEditable ? `<button id="editPagamentosBtn" class="text-sm text-indigo-600 hover:text-indigo-800">Editar</button>` : ''}
+                    </div>
+                    <div id="pagamentos-detail-list" class="space-y-2">
+                        ${(lancamento.pagamentos || []).map(p => `
+                            <div class="flex justify-between text-sm">
+                                <span>${p.metodo}${p.parcelas ? ` (${p.parcelas}x)` : ''}</span>
+                                <span>${formatCurrency(p.valor)}</span>
+                            </div>
+                        `).join('') || '<p class="text-sm text-slate-500">Nenhum pagamento registrado</p>'}
+                    </div>
+                </div>
+                <div class="md:col-span-2">
+                    <p class="text-sm text-slate-500">Observações</p>
+                    <p class="text-lg">${lancamento.obs || 'N/A'}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">Criado por</p>
+                    <p>${lancamento.criadoPor} em ${criadoEm}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">Editado por</p>
+                    <p>${lancamento.editadoPor || 'N/A'} em ${editadoEm}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">Status Faturamento</p>
+                    <p class="${lancamento.faturado ? 'text-green-600' : 'text-yellow-600'}">${faturadoEm}</p>
+                </div>
             </div>
-            <div class="flex justify-end pt-4 border-t">
-                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Nota Fiscal</button>
-            </div>
-        </form>
-        <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <h3 class="text-lg font-medium">Histórico de Notas de Compra</h3>
-            <div class="flex items-center gap-4">
-                <div class="flex items-center gap-2"><label for="nfMonthFilter" class="text-sm font-medium">Mês:</label><select id="nfMonthFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div>
-                <div class="flex items-center gap-2"><label for="nfYearFilter" class="text-sm font-medium">Ano:</label><select id="nfYearFilter" class="rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"></select></div>
-            </div>
-        </div>
-        <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
-            <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nº NF</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">O.S. Vinculada</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Comprador</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor Total</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Ações</th>
-                    </tr>
-                </thead>
-                <tbody id="notasCompraTableBody"></tbody>
-            </table>
-        </div>
-    </div>`;
-};
-
-export const createNotasCompraTableRowsHTML = (notas, lancamentos) => {
-    if (!notas.length) return '<tr><td colspan="6" class="text-center py-10 text-slate-500">Nenhuma nota fiscal de compra encontrada.</td></tr>';
-    
-    return notas.map(n => {
-        const lancamentoCorrespondente = lancamentos.find(l => l.os === n.osId);
-        const lancamentoId = lancamentoCorrespondente ? lancamentoCorrespondente.firestoreId : null;
-
-        return `
-        <tr class="hover:bg-slate-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${n.dataEmissao.toDate().toLocaleDateString('pt-BR')}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${n.numeroNf}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-                ${lancamentoId ? `
-                    <button class="link-to-os text-indigo-600 hover:underline font-medium" data-lancamento-id="${lancamentoId}">${n.osId}</button>` 
-                    : `<span class="text-slate-500" title="Lançamento não encontrado">${n.osId}</span>`}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${n.comprador || '-'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatCurrency(n.valorTotal)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
-                <button class="text-indigo-600 hover:text-indigo-900 edit-notacompra-btn" data-id="${n.firestoreId}">Editar</button>
-                <button class="text-red-600 hover:text-red-900 delete-notacompra-btn" data-id="${n.firestoreId}">Excluir</button>
-            </td>
-        </tr>`
-    }).join('');
-};
-
-// ====================================================================================
-// NOVA FUNÇÃO: Formulário para editar uma Nota Fiscal de Compra
-// ====================================================================================
-export const createNotaCompraDetailHTML = (nota, lancamentos) => {
-    const osList = [...new Set(lancamentos.map(l => l.os).filter(Boolean))];
-
-    const createItemRow = (item = {}) => `
-        <div class="item-row grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-6"><input type="text" value="${item.descricao || ''}" placeholder="Descrição do item" class="item-descricao mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-            <div class="col-span-2"><input type="number" value="${item.quantidade || 1}" class="item-quantidade mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-            <div class="col-span-3"><input type="number" step="0.01" value="${item.valor || ''}" placeholder="Valor Unit." class="item-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-            <div class="col-span-1 text-right"><button type="button" class="remove-item-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>
         </div>
     `;
-
-    return `
-    <div class="space-y-6 max-w-6xl mx-auto">
-        <button class="back-to-list-notas flex items-center text-sm text-indigo-600 hover:text-indigo-800 font-medium"><i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i> Voltar para a lista</button>
-        
-        <form id="editNotaCompraForm" data-id="${nota.firestoreId}" class="bg-white p-6 rounded-lg shadow space-y-4">
-            <h3 class="text-2xl font-bold">Editar NF de Compra</h3>
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div><label class="block text-sm font-medium text-slate-700">O.S. Vinculada</label><input type="text" id="editNotaOsId" value="${nota.osId}" required list="os-list" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"><datalist id="os-list">${osList.map(os => `<option value="${os}"></option>`).join('')}</datalist></div>
-                <div><label class="block text-sm font-medium text-slate-700">Nº da NF</label><input type="text" id="editNotaNumeroNf" value="${nota.numeroNf}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div><label class="block text-sm font-medium text-slate-700">Data Emissão</label><input type="date" id="editNotaData" value="${nota.dataEmissao.toDate().toISOString().split('T')[0]}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                
-                <div>
-                    <label for="editNotaComprador" class="block text-sm font-medium text-slate-700">Comprador</label>
-                    <select id="editNotaComprador" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">
-                        <option value="Erick" ${nota.comprador === 'Erick' ? 'selected' : ''}>Erick</option>
-                        <option value="Fernando" ${nota.comprador === 'Fernando' ? 'selected' : ''}>Fernando</option>
-                        <option value="Lourival" ${nota.comprador === 'Lourival' ? 'selected' : ''}>Lourival</option>
-                    </select>
-                </div>
-
-                <div><label class="block text-sm font-medium text-slate-700">Chave de Acesso</label><input type="text" id="editNotaChaveAcesso" value="${nota.chaveAcesso || ''}" maxlength="44" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-            </div>
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium text-slate-700 mb-2">Formas de Pagamento da Compra</h4>
-                <div id="pagamentos-summary-compra" class="text-sm text-slate-500 p-3 bg-gray-50 rounded-md border">Nenhum pagamento adicionado.</div>
-                <input type="hidden" id="hidden-pagamentos-data-compra" name="pagamentos" value='${JSON.stringify(nota.pagamentos || [])}'>
-                <button type="button" data-modal-target="compra" id="managePagamentosCompraBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
-                    <i data-lucide="credit-card" class="w-4 h-4 mr-1"></i> Gerenciar Pagamentos
-                </button>
-            </div>
-            <div class="pt-4 border-t">
-                <h4 class="text-md font-medium mb-2">Itens da Nota</h4>
-                <div id="itens-container" class="space-y-2">
-                    ${(nota.itens || []).map(createItemRow).join('')}
-                </div>
-                <button type="button" id="addItemBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center">
-                    <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Item
-                </button>
-            </div>
-            <div class="flex justify-end pt-4 border-t">
-                <button type="submit" class="py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">Salvar Alterações</button>
-            </div>
-        </form>
-    </div>`;
 };
 
-export const createPagamentoRowHTML = (data = {}) => {
-    const rowId = `pagamento-row-${Date.now()}-${Math.random()}`;
+export const createVariaveisViewHTML = () => `
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+        <h2 class="text-2xl font-bold">Variáveis</h2>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+                <label for="variaveisMonthFilter" class="text-sm font-medium">Mês:</label>
+                <select id="variaveisMonthFilter" class="rounded-md border-slate-300 shadow-sm"></select>
+            </div>
+            <div class="flex items-center gap-2">
+                <label for="variaveisYearFilter" class="text-sm font-medium">Ano:</label>
+                <select id="variaveisYearFilter" class="rounded-md border-slate-300 shadow-sm"></select>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
+        <table class="min-w-full divide-y divide-slate-200">
+            <thead class="bg-slate-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Data</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Descrição</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Valor</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ações</th>
+                </tr>
+            </thead>
+            <tbody id="variaveisTableBody" class="bg-white divide-y divide-slate-200"></tbody>
+        </table>
+    </div>
+    <div id="variaveisPagination" class="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 sm:px-6"></div>
+`;
+
+export const createVariaveisTableRowsHTML = (variaveis) => variaveis.map(v => {
+    const data = v.data?.toDate().toLocaleDateString('pt-BR') || 'N/A';
+    return `
+        <tr data-id="${v.firestoreId}">
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${data}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${v.descricao || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${formatCurrency(v.valor)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                <button class="edit-variavel-btn text-blue-600 hover:text-blue-900 mr-2"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                <button class="delete-variavel-btn text-red-600 hover:text-red-900"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </td>
+        </tr>
+    `;
+}).join('');
+
+export const createClientesViewHTML = () => `
+    <h2 class="text-2xl font-bold mb-6">Clientes</h2>
+    <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
+        <table class="min-w-full divide-y divide-slate-200">
+            <thead class="bg-slate-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Nome</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Email</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Telefone</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ações</th>
+                </tr>
+            </thead>
+            <tbody id="clientesTableBody" class="bg-white divide-y divide-slate-200"></tbody>
+        </table>
+    </div>
+`;
+
+export const createClientesTableRowsHTML = (clientes) => clientes.map(c => `
+    <tr data-id="${c.firestoreId}">
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${c.nome || 'N/A'}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${c.email || 'N/A'}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${c.telefone || 'N/A'}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+            <button class="view-cliente-btn text-indigo-600 hover:text-indigo-900 mr-2"><i data-lucide="eye" class="w-4 h-4"></i></button>
+            <button class="edit-cliente-btn text-blue-600 hover:text-blue-900 mr-2"><i data-lucide="edit" class="w-4 h-4"></i></button>
+            <button class="delete-cliente-btn text-red-600 hover:text-red-900"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+        </td>
+    </tr>
+`).join('');
+
+export const createClienteDetailHTML = (cliente) => `
+    <div class="bg-white shadow-md rounded-lg p-6">
+        <div class="flex justify-between items-start mb-6">
+            <h2 class="text-2xl font-bold">${cliente.nome || 'Cliente'}</h2>
+            <div class="space-x-2">
+                <button id="editClienteBtn" class="text-blue-600 hover:text-blue-900"><i data-lucide="edit" class="w-5 h-5"></i></button>
+                <button id="deleteClienteBtn" class="text-red-600 hover:text-red-900"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                <button id="backToClientesBtn" class="text-slate-600 hover:text-slate-900"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+            </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <p class="text-sm text-slate-500">Email</p>
+                <p class="text-lg">${cliente.email || 'N/A'}</p>
+            </div>
+            <div>
+                <p class="text-sm text-slate-500">Telefone</p>
+                <p class="text-lg">${cliente.telefone || 'N/A'}</p>
+            </div>
+            <div class="md:col-span-2">
+                <p class="text-sm text-slate-500">Endereço</p>
+                <p class="text-lg">${cliente.endereco || 'N/A'}</p>
+            </div>
+            <div class="md:col-span-2">
+                <p class="text-sm text-slate-500">Observações</p>
+                <p class="text-lg">${cliente.obs || 'N/A'}</p>
+            </div>
+        </div>
+    </div>
+`;
+
+export const createNotasFiscaisViewHTML = () => `
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+        <h2 class="text-2xl font-bold">Notas Fiscais de Compra</h2>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+                <label for="nfMonthFilter" class="text-sm font-medium">Mês:</label>
+                <select id="nfMonthFilter" class="rounded-md border-slate-300 shadow-sm"></select>
+            </div>
+            <div class="flex items-center gap-2">
+                <label for="nfYearFilter" class="text-sm font-medium">Ano:</label>
+                <select id="nfYearFilter" class="rounded-md border-slate-300 shadow-sm"></select>
+            </div>
+            <button id="addNotaCompraBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm">Adicionar Nota</button>
+        </div>
+    </div>
+    <div class="relative mb-4">
+        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i>
+        <input type="search" id="nfSearchInput" placeholder="Buscar por NF, OS ou Comprador..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+    </div>
+    <div class="bg-white shadow overflow-x-auto sm:rounded-lg">
+        <table class="min-w-full divide-y divide-slate-200">
+            <thead class="bg-slate-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Data</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Número NF</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">OS ID</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Comprador</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Valor Total</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ações</th>
+                </tr>
+            </thead>
+            <tbody id="notasCompraTableBody" class="bg-white divide-y divide-slate-200"></tbody>
+        </table>
+    </div>
+    <div id="nfPagination" class="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 sm:px-6"></div>
+`;
+
+export const createNotasCompraTableRowsHTML = (notas) => notas.map(n => {
+    const data = n.dataEmissao?.toDate().toLocaleDateString('pt-BR') || 'N/A';
+    return `
+        <tr data-id="${n.firestoreId}">
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${data}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${n.numeroNf || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${n.osId || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${n.comprador || 'N/A'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900">${formatCurrency(n.valorTotal)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                <button class="view-nota-btn text-indigo-600 hover:text-indigo-900 mr-2"><i data-lucide="eye" class="w-4 h-4"></i></button>
+                <button class="edit-nota-btn text-blue-600 hover:text-blue-900 mr-2"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                <button class="delete-nota-btn text-red-600 hover:text-red-900"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </td>
+        </tr>
+    `;
+}).join('');
+
+export const createNotaCompraDetailHTML = (nota) => {
+    const data = nota.dataEmissao?.toDate().toLocaleDateString('pt-BR') || 'N/A';
+    return `
+        <div class="bg-white shadow-md rounded-lg p-6">
+            <div class="flex justify-between items-start mb-6">
+                <h2 class="text-2xl font-bold">Detalhes da Nota de Compra</h2>
+                <div class="space-x-2">
+                    <button id="editNotaCompraBtn" class="text-blue-600 hover:text-blue-900"><i data-lucide="edit" class="w-5 h-5"></i></button>
+                    <button id="deleteNotaCompraBtn" class="text-red-600 hover:text-red-900"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                    <button id="backToNotasBtn" class="text-slate-600 hover:text-slate-900"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <p class="text-sm text-slate-500">Data de Emissão</p>
+                    <p class="text-lg font-medium">${data}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">Número NF</p>
+                    <p class="text-lg font-medium">${nota.numeroNf || 'N/A'}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">Chave de Acesso</p>
+                    <p class="text-lg font-medium">${nota.chaveAcesso || 'N/A'}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">OS ID</p>
+                    <p class="text-lg font-medium">${nota.osId || 'N/A'}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">Comprador</p>
+                    <p class="text-lg font-medium">${nota.comprador || 'N/A'}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500">Valor Total</p>
+                    <p class="text-lg font-medium">${formatCurrency(nota.valorTotal)}</p>
+                </div>
+                <div class="md:col-span-2">
+                    <p class="text-sm text-slate-500 mb-2">Itens</p>
+                    <div class="space-y-2">
+                        ${(nota.itens || []).map(i => `
+                            <div class="flex justify-between text-sm">
+                                <span>${i.descricao} (${i.quantidade}x)</span>
+                                <span>${formatCurrency(i.valor * i.quantidade)}</span>
+                            </div>
+                        `).join('') || '<p class="text-sm text-slate-500">Nenhum item</p>'}
+                    </div>
+                </div>
+                <div class="md:col-span-2">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-sm text-slate-500">Pagamentos</p>
+                        <button id="editPagamentosCompraBtn" class="text-sm text-indigo-600 hover:text-indigo-800">Editar</button>
+                    </div>
+                    <div id="pagamentos-compra-detail-list" class="space-y-2">
+                        ${(nota.pagamentos || []).map(p => `
+                            <div class="flex justify-between text-sm">
+                                <span>${p.metodo}${p.parcelas ? ` (${p.parcelas}x)` : ''}</span>
+                                <span>${formatCurrency(p.valor)}</span>
+                            </div>
+                        `).join('') || '<p class="text-sm text-slate-500">Nenhum pagamento registrado</p>'}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+};
+
+export const createPagamentoRowHTML = (data, index) => {
     const isParcelable = data.metodo === 'Cartão de Crédito' || data.metodo === 'Boleto';
-    return `
-        <div id="${rowId}" class="pagamento-row grid grid-cols-12 gap-2 items-center">
-            <div class="col-span-5">
-                <select class="pagamento-metodo mt-1 block w-full rounded-md border-slate-300 shadow-sm" required>
-                    <option value="PIX" ${data.metodo === 'PIX' ? 'selected' : ''}>PIX</option>
-                    <option value="Dinheiro" ${data.metodo === 'Dinheiro' ? 'selected' : ''}>Dinheiro</option>
-                    <option value="Cartão de Crédito" ${data.metodo === 'Cartão de Crédito' ? 'selected' : ''}>Cartão de Crédito</option>
-                    <option value="Cartão de Débito" ${data.metodo === 'Cartão de Débito' ? 'selected' : ''}>Cartão de Débito</option>
-                    <option value="Boleto" ${data.metodo === 'Boleto' ? 'selected' : ''}>Boleto</option>
-                    <option value="Cheque" ${data.metodo === 'Cheque' ? 'selected' : ''}>Cheque</option>
-                </select>
-            </div>
-            <div class="col-span-4">
-                <input type="number" step="0.01" placeholder="Valor" class="pagamento-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" value="${data.valor || ''}" required>
-            </div>
-            <div class="col-span-2">
-                <input type="number" placeholder="Parcelas" class="pagamento-parcelas mt-1 block w-full rounded-md border-slate-300 shadow-sm ${isParcelable ? '' : 'hidden'}" value="${data.parcelas || 1}">
-            </div>
-            <div class="col-span-1 text-right">
-                <button type="button" class="remove-pagamento-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-            </div>
-        </div>
-    `;
+    const row = document.createElement('div');
+    row.className = 'pagamento-row grid grid-cols-12 gap-2 items-center mb-2';
+    row.dataset.index = index;
+
+    const metodoSelect = document.createElement('select');
+    metodoSelect.className = 'pagamento-metodo col-span-4 mt-1 block w-full rounded-md border-slate-300 shadow-sm';
+    const options = ['PIX', 'Dinheiro', 'Cartão de Crédito', 'Cartão de Débito', 'Boleto', 'Cheque'];
+    options.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt;
+        option.textContent = opt; // Escapando com textContent
+        option.selected = data.metodo === opt;
+        metodoSelect.appendChild(option);
+    });
+    row.appendChild(metodoSelect);
+
+    const valorInput = document.createElement('input');
+    valorInput.type = 'number';
+    valorInput.step = '0.01';
+    valorInput.placeholder = 'Valor';
+    valorInput.className = 'pagamento-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm col-span-4';
+    valorInput.value = data.valor || '';
+    valorInput.required = true;
+    row.appendChild(valorInput);
+
+    const parcelasInput = document.createElement('input');
+    parcelasInput.type = 'number';
+    parcelasInput.placeholder = 'Parcelas';
+    parcelasInput.className = `pagamento-parcelas mt-1 block w-full rounded-md border-slate-300 shadow-sm col-span-2 ${isParcelable ? '' : 'hidden'}`;
+    parcelasInput.value = data.parcelas || 1;
+    row.appendChild(parcelasInput);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'remove-pagamento-btn text-red-500 hover:text-red-700 col-span-1 text-right';
+    const icon = document.createElement('i');
+    icon.dataset.lucide = 'trash-2';
+    icon.className = 'w-4 h-4';
+    removeBtn.appendChild(icon);
+    row.appendChild(removeBtn);
+
+    return row.outerHTML;
 };
 
 // --- Funções de Modal e Componentes ---
@@ -542,7 +557,7 @@ export const showAlertModal = (title, message) => {
     const modal = document.getElementById('alertModal');
     if(!modal) return;
     modal.querySelector('#alertModalTitle').textContent = title;
-    modal.querySelector('#alertModalMessage').textContent = message;
+    modal.querySelector('#alertModalMessage').innerHTML = message; // Permitir HTML para loader
     modal.style.display = 'flex';
 };
 export const showConfirmModal = (title, message, onConfirm) => {
