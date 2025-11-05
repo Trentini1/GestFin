@@ -5,7 +5,7 @@ export const getGiroTotal = (l) => l.valorTotal ?? ((l.valorMaterial || 0) + (l.
 export function animateCountUp(element, finalValue) {
     console.log(`--- AnimateCountUp chamado para o valor: ${finalValue} ---`); // NOVO CHECKPOINT
     
-    if (finalValue <= 0) {
+    if (Math.abs(finalValue) < 0.01) {
         element.textContent = formatCurrency(finalValue);
         return;
     }
@@ -28,4 +28,16 @@ export function animateCountUp(element, finalValue) {
         }
     }
     requestAnimationFrame(animationStep);
+}
+
+export function exportToCSV(data, filename, headers) {
+    const csvContent = [headers.join(','), ...data.map(row => Object.values(row).map(value => `"${value}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
