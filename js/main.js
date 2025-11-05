@@ -1,13 +1,11 @@
-// js/main.js (COMPLETO E ATUALIZADO)
+// js/main.js (COMPLETO, SEM CORTES, PRONTO PARA COPIAR E COLAR)
 
-// Firebase SDK
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { collection, doc, addDoc, getDoc, deleteDoc, onSnapshot, query, updateDoc, writeBatch, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Módulos locais
 import { auth, db } from './firebase-config.js';
 import { extractPdfImage, callGeminiForAnalysis } from './api.js';
-import { getGiroTotal, animateCountUp, formatCurrency } from './utils.js';
+import { getGiroTotal, animateCountUp, formatCurrency, exportToCSV } from './utils.js';
 import {
     createDashboardHTML, createLancamentosListHTML, createNovoLancamentoFormHTML,
     createLancamentosTableRowsHTML, createLancamentoDetailHTML, showAlertModal,
@@ -15,7 +13,7 @@ import {
     renderNfPieChart, createVariaveisViewHTML, createVariaveisTableRowsHTML,
     createClientesViewHTML, createClientesTableRowsHTML, createClienteDetailHTML,
     createNotasFiscaisViewHTML, createNotasCompraTableRowsHTML, createPagamentoRowHTML,
-    createNotaCompraDetailHTML // <-- NOVA FUNÇÃO IMPORTADA
+    createNotaCompraDetailHTML
 } from './ui.js';
 
 const DEFAULT_COMISSION_RATE = 0.5;
@@ -40,7 +38,7 @@ let sortState = { key: 'dataEmissao', direction: 'desc' };
 // Filtros da tela de Notas Fiscais
 let nfSelectedMonthFilter = null;
 let nfSelectedYearFilter = null;
-let nfSearchTerm = ''; // <-- Sua nova linha
+let nfSearchTerm = '';
 
 // Filtros da tela de Variáveis
 let variaveisSelectedMonthFilter = null;
@@ -138,7 +136,174 @@ function attachNotasCompraListener() {
     }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as notas de compra."));
 }
 
-// --- Lógica de Navegação e Renderização ---
+// --- Funções de Filtro e Paginação ---
+function getFilteredLancamentos() {
+    let filtered = [...allLancamentosData];
+    if (selectedMonthFilter !== null) {
+        filtered = filtered.filter(l => l.dataEmissao.toDate().getMonth() + 1 === selectedMonthFilter);
+    }
+    if (selectedYearFilter !== null) {
+        filtered = filtered.filter(l => l.dataEmissao.toDate().getFullYear() === selectedYearFilter);
+    }
+    if (searchTerm) {
+        filtered = filtered.filter(l =>
+            (l.cliente?.toLowerCase().includes(searchTerm)) ||
+            (l.numeroNf?.toLowerCase().includes(searchTerm)) ||
+            (l.os?.toLowerCase().includes(searchTerm))
+        );
+    }
+    filtered.sort((a, b) => {
+        const dir = sortState.direction === 'asc' ? 1 : -1;
+        if (sortState.key === 'dataEmissao') {
+            return dir * (a.dataEmissao.toDate() - b.dataEmissao.toDate());
+        } else if (['valorTotal', 'comissao'].includes(sortState.key)) {
+            return dir * ((a[sortState.key] || 0) - (b[sortState.key] || 0));
+        } else {
+            return dir * ((a[sortState.key] || '').localeCompare(b[sortState.key] || ''));
+        }
+    });
+    return filtered;
+}
+
+function applyFilters() {
+    const filtered = getFilteredLancamentos();
+    const totalItems = filtered.length;
+    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
+    const tableBody = document.getElementById('lancamentosTableBody');
+    if (tableBody) tableBody.innerHTML = createLancamentosTableRowsHTML(paginated);
+    renderPaginationControls(currentPage, totalItems, totalPages, (direction) => {
+        currentPage = direction === 'prev' ? currentPage - 1 : currentPage + 1;
+        applyFilters();
+    });
+}
+
+function applyNfFilters() {
+    let filtered = [...allNotasCompraData];
+    if (nfSelectedMonthFilter !== null) {
+        filtered = filtered.filter(n => n.dataEmissao.toDate().getMonth() + 1 === nfSelectedMonthFilter);
+    }
+    if (nfSelectedYearFilter !== null) {
+        filtered = filtered.filter(n => n.dataEmissao.toDate().getFullYear() === nfSelectedYearFilter);
+    }
+    if (nfSearchTerm) {
+        filtered = filtered.filter(n =>
+            (n.numeroNf?.toLowerCase().includes(nfSearchTerm)) ||
+            (n.osId?.toLowerCase().includes(nfSearchTerm)) ||
+            (n.comprador?.toLowerCase().includes(nfSearchTerm))
+        );
+    }
+    const totalItems = filtered.length;
+    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
+    const tableBody = document.getElementById('notasCompraTableBody');
+    if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(paginated);
+    const pagination = document.getElementById('nfPagination');
+    if (pagination) renderPaginationControls(currentPage, totalItems, totalPages, (direction) => {
+        currentPage = direction === 'prev' ? currentPage - 1 : currentPage + 1;
+        applyNfFilters();
+    });
+}
+
+function applyVariaveisFilters() {
+    let filtered = [...allVariaveisData];
+    if (variaveisSelectedMonthFilter !== null) {
+        filtered = filtered.filter(v => v.data.toDate().getMonth() + 1 === variaveisSelectedMonthFilter);
+    }
+    if (variaveisSelectedYearFilter !== null) {
+        filtered = filtered.filter(v => v.data.toDate().getFullYear() === variaveisSelectedYearFilter);
+    }
+    const totalItems = filtered.length;
+    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
+    const tableBody = document.getElementById('variaveisTableBody');
+    if (tableBody) tableBody.innerHTML = createVariaveisTableRowsHTML(paginated);
+    const pagination = document.getElementById('variaveisPagination');
+    if (pagination) renderPaginationControls(currentPage, totalItems, totalPages, (direction) => {
+        currentPage = direction === 'prev' ? currentPage - 1 : currentPage + 1;
+        applyVariaveisFilters();
+    });
+}
+
+function populateMonthYearFilters(monthId, yearId, data, dateField = 'dataEmissao') {
+    const months = [...new Set(data.map(d => d[dateField]?.toDate().getMonth() + 1).filter(Boolean))].sort((a, b) => a - b);
+    const years = [...new Set(data.map(d => d[dateField]?.toDate().getFullYear()).filter(Boolean))].sort((a, b) => b - a);
+    const monthSelect = document.getElementById(monthId);
+    const yearSelect = document.getElementById(yearId);
+    if (monthSelect) monthSelect.innerHTML = '<option value="">Todos</option>' + months.map(m => `<option value="${m}">${m.toString().padStart(2, '0')}</option>`).join('');
+    if (yearSelect) yearSelect.innerHTML = '<option value="">Todos</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+}
+
+// --- Funções de Pagamentos ---
+function initializePagamentos(listId, addBtnId, hiddenInputId) {
+    const list = document.getElementById(listId);
+    const addBtn = document.getElementById(addBtnId);
+    const hiddenInput = document.getElementById(hiddenInputId);
+    let pagamentos = [];
+
+    function updateHidden() {
+        hiddenInput.value = JSON.stringify(pagamentos);
+    }
+
+    function addRow(data = { metodo: 'PIX', valor: '', parcelas: 1 }) {
+        const index = pagamentos.length;
+        const rowHTML = createPagamentoRowHTML(data, index);
+        const row = document.createElement('div');
+        row.innerHTML = rowHTML;
+        list.appendChild(row.firstChild);
+
+        const metodoSelect = row.querySelector('.pagamento-metodo');
+        const valorInput = row.querySelector('.pagamento-valor');
+        const parcelasInput = row.querySelector('.pagamento-parcelas');
+        const removeBtn = row.querySelector('.remove-pagamento-btn');
+
+        metodoSelect.addEventListener('change', () => {
+            if (metodoSelect.value === 'Cartão de Crédito' || metodoSelect.value === 'Boleto') {
+                parcelasInput.classList.remove('hidden');
+            } else {
+                parcelasInput.classList.add('hidden');
+                parcelasInput.value = '';
+            }
+            pagamentos[index].metodo = metodoSelect.value;
+            updateHidden();
+        });
+
+        valorInput.addEventListener('input', () => {
+            pagamentos[index].valor = valorInput.value;
+            updateHidden();
+        });
+
+        parcelasInput.addEventListener('input', () => {
+            pagamentos[index].parcelas = parcelasInput.value;
+            updateHidden();
+        });
+
+        removeBtn.addEventListener('click', () => {
+            list.removeChild(row);
+            pagamentos.splice(index, 1);
+            updateHidden();
+            reindexRows();
+        });
+
+        pagamentos.push(data);
+        updateHidden();
+    }
+
+    function reindexRows() {
+        const rows = list.querySelectorAll('.pagamento-row');
+        rows.forEach((row, i) => row.dataset.index = i);
+    }
+
+    addBtn.addEventListener('click', () => addRow());
+
+    // Adiciona primeira linha
+    addRow();
+}
+
+// --- Navegação e Renderização ---
 async function showView(viewId, dataId = null) {
     if (!currentUserProfile) return;
     if (viewId === 'variaveisView' && currentUserProfile.funcao === 'padrao') {
@@ -146,684 +311,349 @@ async function showView(viewId, dataId = null) {
         viewId = 'dashboardView';
     }
     allViews.forEach(v => v.style.display = 'none');
-    const viewContainer = document.getElementById(viewId);
-    if (viewContainer) {
-        viewContainer.style.display = 'block';
-        viewContainer.dataset.id = dataId;
-    }
+    const targetView = document.getElementById(viewId);
+    targetView.style.display = 'block';
 
-    renderView(viewId, { isLoading: true });
-
-    try {
-        if (viewId === 'lancamentoDetailView' && dataId) {
-            const lancamento = allLancamentosData.find(l => l.firestoreId === dataId);
-            if(lancamento) {
-                const custosDaOs = allNotasCompraData.filter(nota => nota.osId === lancamento.os);
-                renderView(viewId, { lancamento, custosDaOs });
-            } else {
-                 showAlertModal("Erro", "Lançamento não encontrado.");
-                 showView('lancamentosListView');
-            }
-        } else if (viewId === 'clienteDetailView' && dataId) {
-            const cliente = allClientesData.find(c => c.firestoreId === dataId);
-            if (cliente) {
-                renderView(viewId, cliente);
-            } else {
-                showAlertModal('Erro', 'Cliente não encontrado.');
-                showView('clientesView');
-            }
-        } 
-        // NOVA LÓGICA: Carregar dados para a tela de edição de NF de Compra
-        else if (viewId === 'notaCompraDetailView' && dataId) {
-            const nota = allNotasCompraData.find(n => n.firestoreId === dataId);
-            if(nota) {
-                renderView(viewId, nota);
-            } else {
-                showAlertModal('Erro', 'Nota Fiscal de Compra não encontrada.');
-                showView('notasFiscaisView');
-            }
-        }
-        else {
-            renderView(viewId);
-            if (viewId === 'lancamentosListView') populateFiltersAndApply();
-            if (viewId === 'notasFiscaisView') populateNfFiltersAndApply();
-            if (viewId === 'variaveisView') populateVariaveisFiltersAndApply();
-            if (viewId === 'notasFiscaisView' && currentUserProfile.funcao !== 'leitura') {
-                setTimeout(() => document.getElementById('addItemBtn')?.click(), 100);
-            }
-        }
-    } catch (e) {
-        showAlertModal("Erro ao carregar a visão", e.message);
-        renderView(viewId);
-    }
-
-    navLinks.forEach(link => {
-        const linkView = link.dataset.view;
-        const isActive = linkView === viewId ||
-            (linkView === 'lancamentosListView' && viewId === 'lancamentoDetailView') ||
-            (linkView === 'clientesView' && viewId === 'clienteDetailView') ||
-            (linkView === 'notasFiscaisView' && viewId === 'notaCompraDetailView'); // NOVA CONDIÇÃO
-
-        link.classList.toggle('text-indigo-600', isActive);
-        link.classList.toggle('border-b-2', isActive);
-        link.classList.toggle('border-indigo-600', isActive);
-        link.classList.toggle('text-slate-500', !isActive);
-    });
-}
-
-function renderView(viewId, data = {}) {
-    const viewContainer = document.getElementById(viewId);
-    if (!viewContainer) return;
-
-    if (data.isLoading) {
-        viewContainer.innerHTML = `<div class="flex items-center justify-center h-96"><div class="loader"></div></div>`;
-        return;
-    }
-
-    let html = '';
-    switch (viewId) {
-        case 'dashboardView':
-            const endDateFinal = new Date(dashboardEndDate);
-            endDateFinal.setHours(23, 59, 59, 999);
-            const dashboardLancamentos = allLancamentosData.filter(l => l.dataEmissao?.toDate() >= dashboardStartDate && l.dataEmissao?.toDate() <= endDateFinal);
-            const dashboardVariaveis = allVariaveisData.filter(v => v.data?.toDate() >= dashboardStartDate && v.data?.toDate() <= endDateFinal);
-            const totalVariaveis = dashboardVariaveis.reduce((sum, v) => sum + v.valor, 0);
-            html = createDashboardHTML(dashboardLancamentos, totalVariaveis, dashboardStartDate, dashboardEndDate, currentUserProfile);
-            break;
-        case 'variaveisView':
-            html = createVariaveisViewHTML(currentUserProfile);
-            break;
-        case 'clientesView':
-            html = createClientesViewHTML(currentUserProfile);
-            break;
-        case 'lancamentosListView':
-            html = createLancamentosListHTML(currentUserProfile);
-            break;
-        case 'lancamentoDetailView':
-            html = createLancamentoDetailHTML(data, currentUserProfile);
-            break;
-        case 'notasFiscaisView':
-            html = createNotasFiscaisViewHTML(allLancamentosData, currentUserProfile);
-            break;
-        case 'clienteDetailView':
-            html = createClienteDetailHTML(data, currentUserProfile);
-            break;
-        // NOVO CASE: Renderizar a tela de edição de NF de Compra
-        case 'notaCompraDetailView':
-            html = createNotaCompraDetailHTML(data, allLancamentosData);
-            break;
-    }
-    viewContainer.innerHTML = html;
-    lucide.createIcons();
-
-    // Pós-renderização
     if (viewId === 'dashboardView') {
-        renderDashboardComponents();
-    } else if (viewId === 'lancamentoDetailView' && data.lancamento) {
-        updatePagamentosSummary('lancamento');
+        const dashboardData = allLancamentosData.filter(l => {
+            const emissaoDate = l.dataEmissao?.toDate();
+            return emissaoDate >= dashboardStartDate && emissaoDate <= dashboardEndDate;
+        });
+        const totalVariaveis = allVariaveisData.reduce((sum, v) => sum + (v.valor || 0), 0);
+        targetView.innerHTML = createDashboardHTML(dashboardData, totalVariaveis, dashboardStartDate, dashboardEndDate, currentUserProfile);
+        lucide.createIcons();
+        document.querySelectorAll('.dashboard-value').forEach(el => animateCountUp(el, parseFloat(el.dataset.value)));
+        renderDashboardChart(allLancamentosData);
+        renderNfPieChart(dashboardData);
+        document.getElementById('dashboardFilterBtn').addEventListener('click', () => {
+            dashboardStartDate = new Date(document.getElementById('dashboardStartDate').value);
+            dashboardEndDate = new Date(document.getElementById('dashboardEndDate').value);
+            showView('dashboardView');
+        });
+        document.getElementById('exportDashboardBtn').addEventListener('click', () => {
+            const headers = ['Data Emissão', 'Cliente', 'Valor Total', 'Comissão', 'Faturado'];
+            const data = dashboardData.map(l => ({
+                'Data Emissão': l.dataEmissao.toDate().toLocaleDateString('pt-BR'),
+                Cliente: l.cliente,
+                'Valor Total': l.valorTotal,
+                Comissão: l.comissao,
+                Faturado: l.faturado ? 'Sim' : 'Não'
+            }));
+            exportToCSV(Object.keys(data[0] || {}).map(k => [k, ...data.map(d => d[k])]), 'dashboard.csv', Object.keys(data[0] || {}));
+        });
+    } else if (viewId === 'lancamentosListView') {
+        currentPage = 1;
+        targetView.innerHTML = createLancamentosListHTML(currentUserProfile);
+        lucide.createIcons();
+        populateMonthYearFilters('monthFilter', 'yearFilter', allLancamentosData);
+        applyFilters();
+        const searchInput = document.getElementById('searchInput');
+        searchInput.addEventListener('input', () => {
+            searchTerm = searchInput.value.toLowerCase();
+            currentPage = 1;
+            applyFilters();
+        });
+        document.getElementById('monthFilter').addEventListener('change', (e) => {
+            selectedMonthFilter = parseInt(e.target.value) || null;
+            currentPage = 1;
+            applyFilters();
+        });
+        document.getElementById('yearFilter').addEventListener('change', (e) => {
+            selectedYearFilter = parseInt(e.target.value) || null;
+            currentPage = 1;
+            applyFilters();
+        });
+        document.getElementById('exportLancamentosBtn').addEventListener('click', () => {
+            const headers = ['Data Emissão', 'Cliente', 'Número NF', 'OS', 'Valor Total', 'Comissão'];
+            const data = getFilteredLancamentos().map(l => ({
+                'Data Emissão': l.dataEmissao.toDate().toLocaleDateString('pt-BR'),
+                Cliente: l.cliente,
+                'Número NF': l.numeroNf,
+                OS: l.os,
+                'Valor Total': l.valorTotal,
+                Comissão: l.comissao
+            }));
+            exportToCSV(Object.keys(data[0] || {}).map(k => [k, ...data.map(d => d[k])]), 'lancamentos.csv', Object.keys(data[0] || {}));
+        });
+        targetView.addEventListener('click', handleLancamentosClick);
+    } else if (viewId === 'lancamentoDetailView') {
+        const lancamento = allLancamentosData.find(l => l.firestoreId === dataId);
+        if (lancamento) {
+            targetView.innerHTML = createLancamentoDetailHTML(lancamento, currentUserProfile);
+            lucide.createIcons();
+            document.getElementById('backToListBtn')?.addEventListener('click', () => showView('lancamentosListView'));
+            document.getElementById('editLancamentoBtn')?.addEventListener('click', () => editLancamento(dataId));
+            document.getElementById('deleteLancamentoBtn')?.addEventListener('click', () => deleteLancamento(dataId));
+            document.getElementById('editPagamentosBtn')?.addEventListener('click', () => editPagamentos(dataId));
+        }
+    } else if (viewId === 'notasFiscaisView') {
+        currentPage = 1;
+        targetView.innerHTML = createNotasFiscaisViewHTML();
+        lucide.createIcons();
+        populateMonthYearFilters('nfMonthFilter', 'nfYearFilter', allNotasCompraData, 'dataEmissao');
+        applyNfFilters();
+        const nfSearchInput = document.getElementById('nfSearchInput');
+        nfSearchInput.addEventListener('input', () => {
+            nfSearchTerm = nfSearchInput.value.toLowerCase();
+            currentPage = 1;
+            applyNfFilters();
+        });
+        document.getElementById('nfMonthFilter').addEventListener('change', (e) => {
+            nfSelectedMonthFilter = parseInt(e.target.value) || null;
+            currentPage = 1;
+            applyNfFilters();
+        });
+        document.getElementById('nfYearFilter').addEventListener('change', (e) => {
+            nfSelectedYearFilter = parseInt(e.target.value) || null;
+            currentPage = 1;
+            applyNfFilters();
+        });
+        document.getElementById('addNotaCompraBtn').addEventListener('click', addNotaCompra);
+        targetView.addEventListener('click', handleNotasCompraClick);
+    } else if (viewId === 'notaCompraDetailView') {
+        const nota = allNotasCompraData.find(n => n.firestoreId === dataId);
+        if (nota) {
+            targetView.innerHTML = createNotaCompraDetailHTML(nota);
+            lucide.createIcons();
+            document.getElementById('backToNotasBtn')?.addEventListener('click', () => showView('notasFiscaisView'));
+            document.getElementById('editNotaCompraBtn')?.addEventListener('click', () => editNotaCompra(dataId));
+            document.getElementById('deleteNotaCompraBtn')?.addEventListener('click', () => deleteNotaCompra(dataId));
+            document.getElementById('editPagamentosCompraBtn')?.addEventListener('click', () => editPagamentosCompra(dataId));
+        }
+    } else if (viewId === 'variaveisView') {
+        currentPage = 1;
+        targetView.innerHTML = createVariaveisViewHTML();
+        lucide.createIcons();
+        populateMonthYearFilters('variaveisMonthFilter', 'variaveisYearFilter', allVariaveisData, 'data');
+        applyVariaveisFilters();
+        document.getElementById('variaveisMonthFilter').addEventListener('change', (e) => {
+            variaveisSelectedMonthFilter = parseInt(e.target.value) || null;
+            currentPage = 1;
+            applyVariaveisFilters();
+        });
+        document.getElementById('variaveisYearFilter').addEventListener('change', (e) => {
+            variaveisSelectedYearFilter = parseInt(e.target.value) || null;
+            currentPage = 1;
+            applyVariaveisFilters();
+        });
+        targetView.addEventListener('click', handleVariaveisClick);
     } else if (viewId === 'clientesView') {
+        targetView.innerHTML = createClientesViewHTML();
+        lucide.createIcons();
         const tableBody = document.getElementById('clientesTableBody');
         if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
-    } 
-    // NOVO: Atualizar o sumário de pagamentos na tela de edição de NF
-    else if (viewId === 'notaCompraDetailView') {
-        updatePagamentosSummary('compra');
-    }
-}
-
-// --- Funções de Componentes (Gráficos, etc.) ---
-function renderDashboardComponents() {
-    const endDateFinal = new Date(dashboardEndDate);
-    endDateFinal.setHours(23, 59, 59, 999);
-    const dashboardLancamentos = allLancamentosData.filter(l => l.dataEmissao?.toDate() >= dashboardStartDate && l.dataEmissao?.toDate() <= endDateFinal);
-    renderDashboardChart(allLancamentosData);
-    renderNfPieChart(dashboardLancamentos);
-    document.querySelectorAll('.dashboard-value').forEach(el => animateCountUp(el, parseFloat(el.dataset.value)));
-}
-
-// --- Lógica de Filtros e Paginação ---
-function getFilteredData() {
-    let filtered = [...allLancamentosData];
-    if (selectedYearFilter !== null) {
-        filtered = filtered.filter(l => l.dataEmissao?.toDate().getFullYear() === selectedYearFilter);
-    }
-    if (selectedMonthFilter !== null) {
-        filtered = filtered.filter(l => l.dataEmissao?.toDate().getMonth() === selectedMonthFilter);
-    }
-    if (searchTerm) {
-        const lowerCaseSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter(l =>
-            l.cliente?.toLowerCase().includes(lowerCaseSearch) ||
-            l.numeroNf?.toLowerCase().includes(lowerCaseSearch) ||
-            l.os?.toLowerCase().includes(lowerCaseSearch)
-        );
-    }
-    filtered.sort((a, b) => {
-        let valA = a[sortState.key];
-        let valB = b[sortState.key];
-        if (sortState.key === 'dataEmissao') {
-            valA = valA?.toDate() || 0;
-            valB = valB?.toDate() || 0;
+        targetView.addEventListener('click', handleClientesClick);
+    } else if (viewId === 'clienteDetailView') {
+        const cliente = allClientesData.find(c => c.firestoreId === dataId);
+        if (cliente) {
+            targetView.innerHTML = createClienteDetailHTML(cliente);
+            lucide.createIcons();
+            document.getElementById('backToClientesBtn')?.addEventListener('click', () => showView('clientesView'));
+            document.getElementById('editClienteBtn')?.addEventListener('click', () => editCliente(dataId));
+            document.getElementById('deleteClienteBtn')?.addEventListener('click', () => deleteCliente(dataId));
         }
-        if (valA < valB) return sortState.direction === 'asc' ? -1 : 1;
-        if (valA > valB) return sortState.direction === 'asc' ? 1 : -1;
-        return 0;
-    });
-    return filtered;
-}
-
-function applyFilters() {
-    const filteredData = getFilteredData();
-    const totalItems = filteredData.length;
-    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-    currentPage = Math.max(1, Math.min(currentPage, totalPages));
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const end = start + ITEMS_PER_PAGE;
-    const paginatedData = filteredData.slice(start, end);
-    const tableBody = document.getElementById('lancamentosTableBody');
-    if (tableBody) {
-        tableBody.innerHTML = createLancamentosTableRowsHTML(paginatedData, currentUserProfile);
-    }
-    renderPaginationControls(currentPage, totalItems, totalPages, (direction) => {
-        if (direction === 'prev') currentPage--;
-        if (direction === 'next') currentPage++;
-        applyFilters();
-    });
-    updateSortUI();
-}
-
-function populateFiltersAndApply() {
-    const monthFilter = document.getElementById('monthFilter');
-    const yearFilter = document.getElementById('yearFilter');
-    const searchInput = document.getElementById('searchInput');
-    if (!monthFilter || !yearFilter || !searchInput) return;
-
-    const years = [...new Set(allLancamentosData.map(l => l.dataEmissao?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
-    yearFilter.innerHTML = '<option value="">Todos os Anos</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
-    yearFilter.value = selectedYearFilter === null ? '' : selectedYearFilter;
-
-    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-    monthFilter.innerHTML = '<option value="">Todos os Meses</option>' + monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
-    monthFilter.value = selectedMonthFilter === null ? '' : selectedMonthFilter;
-
-    monthFilter.onchange = () => { selectedMonthFilter = monthFilter.value === '' ? null : parseInt(monthFilter.value); currentPage = 1; applyFilters(); };
-    yearFilter.onchange = () => { selectedYearFilter = yearFilter.value === '' ? null : parseInt(yearFilter.value); currentPage = 1; applyFilters(); };
-    searchInput.oninput = () => { searchTerm = searchInput.value; currentPage = 1; applyFilters(); };
-    applyFilters();
-}
-
-function updateSortUI() {
-    document.querySelectorAll('.sort-btn').forEach(btn => {
-        const existingIcon = btn.querySelector('svg');
-        if (existingIcon) {
-            existingIcon.remove();
-        }
-        const key = btn.dataset.key;
-        let iconName = 'arrow-down-up';
-        if (key === sortState.key) {
-            iconName = sortState.direction === 'asc' ? 'arrow-up' : 'arrow-down';
-        }
-        btn.insertAdjacentHTML('beforeend', `<i data-lucide="${iconName}" class="h-4 w-4"></i>`);
-    });
-    lucide.createIcons();
-}
-
-function applyNfFilters() {
-    let filteredData = [...allNotasCompraData];
-    
-    // Filtro de Ano
-    if (nfSelectedYearFilter !== null) {
-        filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getFullYear() === nfSelectedYearFilter);
-    }
-    // Filtro de Mês
-    if (nfSelectedMonthFilter !== null) {
-        filteredData = filteredData.filter(nf => nf.dataEmissao?.toDate().getMonth() === nfSelectedMonthFilter);
-    }
-
-    // ======================================================
-    //  NOVA LÓGICA DE BUSCA
-    // ======================================================
-    if (nfSearchTerm) {
-        const lowerCaseSearch = nfSearchTerm.toLowerCase();
-        filteredData = filteredData.filter(nf =>
-            nf.numeroNf?.toLowerCase().includes(lowerCaseSearch) ||  // Busca por Número da NF
-            nf.osId?.toLowerCase().includes(lowerCaseSearch) ||      // Busca por O.S. Vinculada
-            nf.comprador?.toLowerCase().includes(lowerCaseSearch) || // Busca por Comprador
-            nf.valorTotal.toString().includes(lowerCaseSearch)    // Busca por Valor Total
-        );
-    }
-    // ======================================================
-
-    // Ordenação (mantida)
-    filteredData.sort((a, b) => b.dataEmissao.toDate() - a.dataEmissao.toDate());
-    
-    // Renderiza a tabela
-    const tableBody = document.getElementById('notasCompraTableBody');
-    if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(filteredData, allLancamentosData);
-}
-
-function populateNfFiltersAndApply() {
-    const monthFilter = document.getElementById('nfMonthFilter');
-    const yearFilter = document.getElementById('nfYearFilter');
-    const searchInput = document.getElementById('nfSearchInput'); // <-- NOVO
-
-    // Atualiza a verificação
-    if (!monthFilter || !yearFilter || !searchInput) return; 
-
-    // Lógica dos filtros de Ano (mantida)
-    const years = [...new Set(allNotasCompraData.map(l => l.dataEmissao?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
-    yearFilter.innerHTML = '<option value="">Todos os Anos</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
-    yearFilter.value = nfSelectedYearFilter === null ? '' : nfSelectedYearFilter;
-
-    // Lógica dos filtros de Mês (mantida)
-    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-    monthFilter.innerHTML = '<option value="">Todos os Meses</option>' + monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
-    monthFilter.value = nfSelectedMonthFilter === null ? '' : nfSelectedMonthFilter;
-
-    // "Ouvintes" de eventos (mantidos)
-    monthFilter.onchange = () => { nfSelectedMonthFilter = monthFilter.value === '' ? null : parseInt(monthFilter.value); applyNfFilters(); };
-    yearFilter.onchange = () => { nfSelectedYearFilter = yearFilter.value === '' ? null : parseInt(yearFilter.value); applyNfFilters(); };
-
-    // ======================================================
-    //  NOVO "OUVINTE" PARA A BUSCA
-    // ======================================================
-    searchInput.oninput = () => { 
-        nfSearchTerm = searchInput.value; 
-        applyNfFilters(); 
-    };
-    // ======================================================
-    
-    // Aplica os filtros na primeira carga
-    applyNfFilters();
-}
-
-function applyVariaveisFilters() {
-    let filteredData = [...allVariaveisData];
-    if (variaveisSelectedYearFilter !== null) {
-        filteredData = filteredData.filter(v => v.data?.toDate().getFullYear() === variaveisSelectedYearFilter);
-    }
-    if (variaveisSelectedMonthFilter !== null) {
-        filteredData = filteredData.filter(v => v.data?.toDate().getMonth() === variaveisSelectedMonthFilter);
-    }
-    filteredData.sort((a, b) => b.data.toDate() - a.data.toDate());
-    const tableBody = document.getElementById('variaveisTableBody');
-    if (tableBody) tableBody.innerHTML = createVariaveisTableRowsHTML(filteredData, currentUserProfile);
-}
-
-function populateVariaveisFiltersAndApply() {
-    const monthFilter = document.getElementById('variaveisMonthFilter');
-    const yearFilter = document.getElementById('variaveisYearFilter');
-    if (!monthFilter || !yearFilter) return;
-
-    const years = [...new Set(allVariaveisData.map(v => v.data?.toDate().getFullYear()))].filter(Boolean).sort((a, b) => b - a);
-    yearFilter.innerHTML = '<option value="">Todos os Anos</option>' + years.map(year => `<option value="${year}">${year}</option>`).join('');
-    yearFilter.value = variaveisSelectedYearFilter === null ? '' : variaveisSelectedYearFilter;
-
-    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-    monthFilter.innerHTML = '<option value="">Todos os Meses</option>' + monthNames.map((name, index) => `<option value="${index}">${name}</option>`).join('');
-    monthFilter.value = variaveisSelectedMonthFilter === null ? '' : variaveisSelectedMonthFilter;
-
-    monthFilter.onchange = () => { variaveisSelectedMonthFilter = monthFilter.value === '' ? null : parseInt(monthFilter.value); applyVariaveisFilters(); };
-    yearFilter.onchange = () => { variaveisSelectedYearFilter = yearFilter.value === '' ? null : parseInt(yearFilter.value); applyVariaveisFilters(); };
-    applyVariaveisFilters();
-}
-
-// --- LÓGICA DO MODAL DE PAGAMENTOS ---
-let activeModalTarget = null;
-
-function openPagamentosModal(target) {
-    activeModalTarget = target;
-    const hiddenInputId = `hidden-pagamentos-data${target === 'compra' ? '-compra' : ''}`;
-    const hiddenInput = document.getElementById(hiddenInputId);
-    const pagamentosList = document.getElementById('modal-pagamentos-list');
-    pagamentosList.innerHTML = '';
-
-    try {
-        const pagamentos = JSON.parse(hiddenInput.value || '[]');
-        if (pagamentos.length > 0) {
-            pagamentos.forEach(p => pagamentosList.innerHTML += createPagamentoRowHTML(p));
-        } else {
-            pagamentosList.innerHTML += createPagamentoRowHTML();
-        }
-    } catch (e) {
-        pagamentosList.innerHTML += createPagamentoRowHTML();
-    }
-    
-    lucide.createIcons();
-    document.getElementById('pagamentosModal').classList.remove('hidden');
-}
-
-function savePagamentosFromModal() {
-    const hiddenInputId = `hidden-pagamentos-data${activeModalTarget === 'compra' ? '-compra' : ''}`;
-    const hiddenInput = document.getElementById(hiddenInputId);
-    const pagamentosList = document.getElementById('modal-pagamentos-list');
-    
-    const pagamentos = [];
-    pagamentosList.querySelectorAll('.pagamento-row').forEach(row => {
-        const metodo = row.querySelector('.pagamento-metodo').value;
-        const valor = parseFloat(row.querySelector('.pagamento-valor').value);
-        const parcelasInput = row.querySelector('.pagamento-parcelas');
-        const parcelas = parcelasInput.classList.contains('hidden') ? 1 : (parseInt(parcelasInput.value) || 1);
-        
-        if(metodo && !isNaN(valor) && valor > 0) {
-            pagamentos.push({ metodo, valor, parcelas });
-        }
-    });
-
-    hiddenInput.value = JSON.stringify(pagamentos);
-    updatePagamentosSummary(activeModalTarget);
-    closePagamentosModal();
-}
-
-function updatePagamentosSummary(target) {
-    const summaryId = `pagamentos-summary${target === 'compra' ? '-compra' : ''}`;
-    const hiddenInputId = `hidden-pagamentos-data${target === 'compra' ? '-compra' : ''}`;
-    const summaryEl = document.getElementById(summaryId);
-    const hiddenInput = document.getElementById(hiddenInputId);
-
-    if (!summaryEl || !hiddenInput) return;
-
-    try {
-        const pagamentos = JSON.parse(hiddenInput.value || '[]');
-        if (pagamentos.length === 0) {
-            summaryEl.textContent = 'Nenhum pagamento adicionado.';
-            return;
-        }
-        const total = pagamentos.reduce((sum, p) => sum + p.valor, 0);
-        summaryEl.textContent = `${pagamentos.length} pagamento(s) adicionado(s). Total: ${formatCurrency(total)}`;
-    } catch (e) {
-        summaryEl.textContent = 'Erro ao ler pagamentos.';
     }
 }
 
-function closePagamentosModal() {
-    document.getElementById('pagamentosModal').classList.add('hidden');
-    activeModalTarget = null;
-}
-    
-// --- Lógica de Relatórios e Backup ---
-function generatePrintReport() {
-    const dataToPrint = getFilteredData();
-    if (dataToPrint.length === 0) {
-        showAlertModal('Aviso', 'Não há dados para imprimir com os filtros atuais.');
-        return;
-    }
-    const reportWindow = window.open('', '', 'height=800,width=1200');
-    reportWindow.document.write('<html><head><title>Relatório de Lançamentos</title>');
-    reportWindow.document.write('<style>@media print { body { -webkit-print-color-adjust: exact; } } body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #333; } h1 { text-align: center; margin-bottom: 10px; font-size: 16pt; color: #000; } p { font-size: 8pt; color: #777; margin-bottom: 20px; text-align: center; } table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; word-wrap: break-word; } th { background-color: #f0f0f0; font-weight: bold; color: #000; } tr:nth-child(even) { background-color: #f9f9f9; }</style>');
-    reportWindow.document.write('</head><body>');
-    reportWindow.document.write(`<h1>Relatório de Lançamentos</h1><p>Gerado em: ${new Date().toLocaleString('pt-BR')}</p>`);
-    reportWindow.document.write('<table><thead><tr><th>Data</th><th>Cliente</th><th>NF</th><th>O.S/PC</th><th>Valor Total</th><th>Comissão</th><th>Faturado</th></tr></thead><tbody>');
-    dataToPrint.forEach(l => {
-        reportWindow.document.write(`<tr><td>${l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || ''}</td><td>${l.cliente || ''}</td><td>${l.numeroNf || 'NT'}</td><td>${l.os || ''}</td><td>${formatCurrency(getGiroTotal(l))}</td><td>${currentUserProfile.funcao !== 'padrao' ? formatCurrency(l.comissao || 0) : 'N/A'}</td><td>${l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente'}</td></tr>`);
-    });
-    reportWindow.document.write('</tbody></table></body></html>');
-    reportWindow.document.close();
-    reportWindow.focus(); 
-    reportWindow.print();
-}
-
-function generateCsvReport() {
-    const dataToExport = getFilteredData();
-    if (dataToExport.length === 0) {
-        showAlertModal('Aviso', 'Não há dados para exportar com os filtros atuais.');
-        return;
-    }
-    const escapeCsv = (str) => `"${(str === null || str === undefined ? '' : str).toString().replace(/"/g, '""')}"`;
-    const headers = ['Data Emissao', 'Cliente', 'Numero NF', 'O.S/PC', 'Descricao', 'Valor Total', 'Comissao', 'Data Faturamento', 'Observacoes'];
-    const csvRows = [headers.join(',')];
-    dataToExport.forEach(l => {
-        const row = [l.dataEmissao?.toDate().toLocaleDateString('pt-BR') || '', l.cliente || '', l.numeroNf || 'NT', l.os || '', l.descricao || '', getGiroTotal(l) || 0, currentUserProfile.funcao !== 'padrao' ? (l.comissao || 0) : 'N/A', l.faturado ? l.faturado.toDate().toLocaleDateString('pt-BR') : 'Pendente', l.obs || ''];
-        csvRows.push(row.map(escapeCsv).join(','));
-    });
-    const csvString = csvRows.join('\n');
-    const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `relatorio_lancamentos_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-function generateBackupFile() {
-    showConfirmModal('Fazer Backup Completo?', 'Isso irá gerar um arquivo JSON com todos os dados do sistema.', () => {
-        const backupData = { lancamentos: allLancamentosData, clientes: allClientesData, variaveis: allVariaveisData, notasCompra: allNotasCompraData, backupDate: new Date().toISOString() };
-        const jsonString = JSON.stringify(backupData, null, 2);
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `backup_gestao_pro_${new Date().toISOString().split('T')[0]}.json`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        showAlertModal('Sucesso', 'O download do arquivo de backup foi iniciado.');
-    });
-}
-
-async function handleRestoreFile(file) {
-    showAlertModal('Aviso', 'A função de restaurar backup ainda não foi implementada.');
-}
-
-// --- Event Listeners Globais ---
-document.addEventListener('DOMContentLoaded', () => {
-    const loginForm = document.getElementById('loginForm');
-    if(loginForm) {
-        loginForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const email = document.getElementById('loginEmail').value;
-            const password = document.getElementById('loginPassword').value;
-            const loginButton = document.getElementById('loginButton');
-            loginButton.disabled = true;
-            loginButton.textContent = 'Entrando...';
-        
-            signInWithEmailAndPassword(auth, email, password)
-                .catch(error => {
-                    showAlertModal('Erro de Login', 'E-mail ou senha inválidos.');
-                })
-                .finally(() => {
-                    loginButton.disabled = false;
-                    loginButton.textContent = 'Entrar';
-                });
-        });
-    }
-
-    document.getElementById('alertModalCloseButton')?.addEventListener('click', () => closeModal('alertModal'));
-    document.getElementById('confirmModalCancelButton')?.addEventListener('click', () => closeModal('confirmModal'));
-    document.getElementById('confirmModalConfirmButton')?.addEventListener('click', handleConfirm);
-    document.getElementById('pagamentosModalCancelBtn')?.addEventListener('click', closePagamentosModal);
-    document.getElementById('pagamentosModalSaveBtn')?.addEventListener('click', savePagamentosFromModal);
-});
-
-document.getElementById('pagamentosModal').addEventListener('click', (e) => {
-    const target = e.target;
-    if (target.closest('#addModalPagamentoBtn')) {
-         document.getElementById('modal-pagamentos-list').insertAdjacentHTML('beforeend', createPagamentoRowHTML());
-         lucide.createIcons();
-    }
-    if (target.closest('.remove-pagamento-btn')) {
-        target.closest('.pagamento-row').remove();
-    }
-});
-
-
-appView.addEventListener('click', async (e) => {
-    if (!currentUserProfile) return;
-    const isReadOnly = currentUserProfile.funcao === 'leitura';
-    const actionElement = e.target.closest('button, .faturado-toggle');
-    const isAllowedForReadOnly = e.target.closest('.nav-link, .view-details, .back-to-list, .back-to-list-clientes, #exportPdfBtn, #exportCsvBtn, .sort-btn, #dashboardFilterBtn, #managePagamentosBtn, #managePagamentosCompraBtn, .edit-notacompra-btn, .back-to-list-notas');
-
-    if (isReadOnly && actionElement && !isAllowedForReadOnly) {
-        e.preventDefault();
-        e.stopPropagation();
-        showAlertModal('Acesso Negado', 'Você tem permissão apenas para visualização.');
-        return;
-    }
-    
-    const { target } = e;
-    if (target.closest('.nav-link')) { e.preventDefault(); showView(target.closest('.nav-link').dataset.view); }
-    else if (target.closest('.sort-btn')) { 
-        const key = target.closest('.sort-btn').dataset.key;
-        sortState.direction = (sortState.key === key && sortState.direction === 'asc') ? 'desc' : 'asc';
+// --- Handlers de Cliques ---
+function handleLancamentosClick(e) {
+    const row = e.target.closest('tr');
+    if (!row) return;
+    const id = row.dataset.id;
+    if (e.target.closest('.view-btn')) {
+        showView('lancamentoDetailView', id);
+    } else if (e.target.closest('.edit-btn')) {
+        editLancamento(id);
+    } else if (e.target.closest('.delete-btn')) {
+        deleteLancamento(id);
+    } else if (e.target.closest('.sort-btn')) {
+        const key = e.target.dataset.key;
+        sortState.direction = sortState.key === key && sortState.direction === 'asc' ? 'desc' : 'asc';
         sortState.key = key;
+        currentPage = 1;
         applyFilters();
-    }
-    else if (target.closest('#reset-sort')) { 
-        sortState = { key: 'dataEmissao', direction: 'desc' }; 
-        applyFilters(); 
-    }
-    else if (target.closest('.view-details')) { showView('lancamentoDetailView', target.closest('.view-details').dataset.id); }
-    else if (target.closest('.back-to-list')) { showView('lancamentosListView'); }
-    else if (target.closest('.edit-cliente-btn')) { showView('clienteDetailView', target.closest('.edit-cliente-btn').dataset.id); }
-    else if (target.closest('.back-to-list-clientes')) { showView('clientesView'); }
-    // NOVA NAVEGAÇÃO
-    else if (target.closest('.edit-notacompra-btn')) { showView('notaCompraDetailView', target.closest('.edit-notacompra-btn').dataset.id); }
-    else if (target.closest('.back-to-list-notas')) { showView('notasFiscaisView'); }
-
-    else if (target.id === 'dashboardFilterBtn') {
-        const startDateValue = document.getElementById('dashboardStartDate').value;
-        const endDateValue = document.getElementById('dashboardEndDate').value;
-        dashboardStartDate = new Date(startDateValue + 'T00:00:00');
-        dashboardEndDate = new Date(endDateValue + 'T00:00:00');
-        showView('dashboardView');
-    }
-    else if (target.id === 'toggleFormBtn') {
+    } else if (e.target.id === 'toggleFormBtn') {
         const formContainer = document.getElementById('formContainer');
-        if (formContainer.style.maxHeight) {
-            formContainer.style.maxHeight = null;
-            setTimeout(() => { if (formContainer) formContainer.innerHTML = ''; }, 500);
-        } else {
-            formContainer.innerHTML = createNovoLancamentoFormHTML(currentUserProfile);
-            const clientList = document.getElementById('client-list');
-            if (clientList) clientList.innerHTML = allClientesData.map(c => `<option value="${c.nome}"></option>`).join('');
-            document.getElementById('newDataEmissao').valueAsDate = new Date();
-            formContainer.style.maxHeight = formContainer.scrollHeight + "px";
-        }
-    }
-    else if (target.id === 'cancelNewLancamento') {
-        const formContainer = document.getElementById('formContainer');
-        if(formContainer) {
-            formContainer.style.maxHeight = null;
+        if (formContainer.style.maxHeight && formContainer.style.maxHeight !== '0px') {
+            formContainer.style.maxHeight = '0px';
             setTimeout(() => formContainer.innerHTML = '', 500);
+        } else {
+            formContainer.innerHTML = createNovoLancamentoFormHTML();
+            lucide.createIcons();
+            formContainer.style.maxHeight = formContainer.scrollHeight + 'px';
+            initializePagamentos('pagamentos-list', 'addPagamentoBtn', 'hidden-pagamentos-data');
+            document.getElementById('cancelFormBtn').addEventListener('click', () => {
+                formContainer.style.maxHeight = '0px';
+                setTimeout(() => formContainer.innerHTML = '', 500);
+            });
         }
-    }
-    else if (target.id === 'analiseIaBtn') {
+    } else if (e.target.id === 'analiseIaBtn') {
         document.getElementById('nfUploadInput').click();
     }
-    else if (target.closest('.faturado-toggle')) {
-        const button = target.closest('.faturado-toggle');
-        const lancamento = allLancamentosData.find(l => l.firestoreId === button.dataset.id);
-        if (lancamento) await updateDoc(doc(db, 'lancamentos', button.dataset.id), { faturado: lancamento.faturado ? null : new Date() });
-    } 
-    else if (target.id === 'deleteLancamentoBtn') {
-        const form = target.closest('form');
-        if (form) showConfirmModal('Excluir Lançamento?', 'Esta ação é permanente.', async () => {
-            await deleteDoc(doc(db, "lancamentos", form.dataset.id));
-            showAlertModal('Excluído!', 'O lançamento foi removido.');
-            showView('lancamentosListView');
-        });
-    }
-    else if (target.id === 'exportPdfBtn') { generatePrintReport(); }
-    else if (target.id === 'exportCsvBtn') { generateCsvReport(); }
-    else if (target.id === 'backupBtn') { generateBackupFile(); }
-    else if (target.id === 'restoreBtn') { document.getElementById('restoreInput').click(); }
-    else if (target.closest('.delete-variavel-btn')) {
-        const id = target.closest('.delete-variavel-btn').dataset.id;
-        showConfirmModal('Excluir Variável?', 'Esta ação não pode ser desfeita.', async () => {
-            await deleteDoc(doc(db, 'variaveis', id));
-            showAlertModal('Sucesso', 'Variável excluída.');
-        });
-    }
-    else if (target.closest('.delete-cliente-btn')) {
-        const id = target.closest('.delete-cliente-btn').dataset.id;
-        showConfirmModal('Excluir Cliente?', 'Esta ação não pode ser desfeita.', async () => {
-            await deleteDoc(doc(db, 'clientes', id));
-            showAlertModal('Sucesso', 'Cliente excluído.');
-        });
-    }
-    else if (target.closest('.delete-notacompra-btn')) {
-        const id = target.closest('.delete-notacompra-btn').dataset.id;
-        showConfirmModal('Excluir Nota de Compra?', 'Esta ação é permanente.', async () => {
-            await deleteDoc(doc(db, 'notasCompra', id));
-            showAlertModal('Sucesso', 'A nota fiscal de compra foi excluída.');
-        });
-    }
-    else if (target.id === 'addItemBtn') {
-        const container = document.getElementById('itens-container');
-        if (!container) return;
-        const newItemHTML = `
-            <div class="item-row grid grid-cols-12 gap-2 items-center">
-                <div class="col-span-6"><input type="text" placeholder="Descrição do item" class="item-descricao mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-                <div class="col-span-2"><input type="number" value="1" class="item-quantidade mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-                <div class="col-span-3"><input type="number" step="0.01" placeholder="Valor Unit." class="item-valor mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-                <div class="col-span-1 text-right"><button type="button" class="remove-item-btn text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>
-            </div>`;
-        container.insertAdjacentHTML('beforeend', newItemHTML);
-        lucide.createIcons();
-    }
-    else if (target.closest('.remove-item-btn')) {
-        target.closest('.item-row').remove();
-    }
-    else if (target.closest('.link-to-os')) {
-        const lancamentoId = target.closest('.link-to-os').dataset.lancamentoId;
-        if (lancamentoId) {
-            showView('lancamentoDetailView', lancamentoId);
-        }
-    }
-    else if (target.id === 'managePagamentosBtn' || target.id === 'managePagamentosCompraBtn') {
-        openPagamentosModal(e.target.dataset.modalTarget || 'lancamento');
-    }
-});
+}
 
+function handleNotasCompraClick(e) {
+    const row = e.target.closest('tr');
+    if (!row) return;
+    const id = row.dataset.id;
+    if (e.target.closest('.view-nota-btn')) {
+        showView('notaCompraDetailView', id);
+    } else if (e.target.closest('.edit-nota-btn')) {
+        editNotaCompra(id);
+    } else if (e.target.closest('.delete-nota-btn')) {
+        deleteNotaCompra(id);
+    }
+}
+
+function handleVariaveisClick(e) {
+    const row = e.target.closest('tr');
+    if (!row) return;
+    const id = row.dataset.id;
+    if (e.target.closest('.edit-variavel-btn')) {
+        editVariavel(id);
+    } else if (e.target.closest('.delete-variavel-btn')) {
+        deleteVariavel(id);
+    }
+}
+
+function handleClientesClick(e) {
+    const row = e.target.closest('tr');
+    if (!row) return;
+    const id = row.dataset.id;
+    if (e.target.closest('.view-cliente-btn')) {
+        showView('clienteDetailView', id);
+    } else if (e.target.closest('.edit-cliente-btn')) {
+        editCliente(id);
+    } else if (e.target.closest('.delete-cliente-btn')) {
+        deleteCliente(id);
+    }
+}
+
+// --- Ações de CRUD ---
+function editLancamento(id) {
+    const l = allLancamentosData.find(x => x.firestoreId === id);
+    if (!l) return;
+    const formHTML = `
+        <form id="editLancamentoForm" data-id="${id}" class="bg-white shadow-md rounded-lg p-6 space-y-6">
+            <!-- Campos iguais ao createNovoLancamentoFormHTML, mas com valores preenchidos -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div><label class="block text-sm font-medium text-slate-700">Data de Emissão</label><input type="date" id="editDataEmissao" value="${l.dataEmissao.toDate().toISOString().split('T')[0]}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+                <div><label class="block text-sm font-medium text-slate-700">Cliente</label><input type="text" id="editCliente" value="${l.cliente}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+                <div><label class="block text-sm font-medium text-slate-700">Número NF</label><input type="text" id="editNumeroNf" value="${l.numeroNf}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div><label class="block text-sm font-medium text-slate-700">OS</label><input type="text" id="editOs" value="${l.os}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Descrição</label><textarea id="editDescricao" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">${l.descricao}</textarea></div>
+                <div><label class="block text-sm font-medium text-slate-700">Valor Total</label><input type="number" step="0.01" id="editValorTotal" value="${l.valorTotal}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
+                <div><label class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label><input type="number" step="0.01" id="editTaxaComissao" value="${l.taxaComissao}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Impostos (%)</label><div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div><label class="block text-xs text-slate-600">ISS</label><input type="number" step="0.01" id="editImpostoIss" value="${l.impostos?.iss || 0}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-xs text-slate-600">PIS</label><input type="number" step="0.01" id="editImpostoPis" value="${l.impostos?.pis || 0}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-xs text-slate-600">COFINS</label><input type="number" step="0.01" id="editImpostoCofins" value="${l.impostos?.cofins || 0}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-xs text-slate-600">ICMS</label><input type="number" step="0.01" id="editImpostoIcms" value="${l.impostos?.icms || 0}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                </div></div>
+                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Pagamentos</label><div id="edit-pagamentos-list" class="space-y-3"></div><button type="button" id="editAddPagamentoBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center"><i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento</button><input type="hidden" id="hidden-pagamentos-data" name="pagamentos"></div>
+                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Observações</label><textarea id="editObs" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">${l.obs || ''}</textarea></div>
+            </div>
+            <div class="flex justify-end gap-4">
+                <button type="button" id="cancelEditBtn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Salvar</button>
+            </div>
+        </form>
+    `;
+    const detailView = document.getElementById('lancamentoDetailView');
+    detailView.innerHTML = formHTML;
+    lucide.createIcons();
+    initializePagamentos('edit-pagamentos-list', 'editAddPagamentoBtn', 'hidden-pagamentos-data');
+    const pagamentosList = document.getElementById('edit-pagamentos-list');
+    pagamentosList.innerHTML = '';
+    (l.pagamentos || []).forEach(p => {
+        const index = pagamentosList.children.length;
+        const row = document.createElement('div');
+        row.innerHTML = createPagamentoRowHTML(p, index);
+        pagamentosList.appendChild(row.firstChild);
+    });
+    document.getElementById('cancelEditBtn').addEventListener('click', () => showView('lancamentoDetailView', id));
+}
+
+function deleteLancamento(id) {
+    showConfirmModal('Confirmar Exclusão', 'Tem certeza que deseja excluir este lançamento?', async () => {
+        await deleteDoc(doc(db, 'lancamentos', id));
+        showAlertModal('Sucesso', 'Lançamento excluído com sucesso.');
+        showView('lancamentosListView');
+    });
+}
+
+function editPagamentos(id) {
+    const l = allLancamentosData.find(x => x.firestoreId === id);
+    if (!l) return;
+    const modal = document.getElementById('pagamentosModal');
+    modal.querySelector('#pagamentosModalTitle').textContent = 'Editar Pagamentos';
+    const list = modal.querySelector('#modal-pagamentos-list');
+    list.innerHTML = '';
+    (l.pagamentos || []).forEach((p, i) => {
+        const row = document.createElement('div');
+        row.innerHTML = createPagamentoRowHTML(p, i);
+        list.appendChild(row.firstChild);
+    });
+    modal.style.display = 'flex';
+    const saveBtn = modal.querySelector('#pagamentosModalSaveBtn');
+    const cancelBtn = modal.querySelector('#pagamentosModalCancelBtn');
+    const addBtn = modal.querySelector('#addModalPagamentoBtn');
+
+    const pagamentos = [...(l.pagamentos || [])];
+    function updatePagamentos() {
+        const rows = list.querySelectorAll('.pagamento-row');
+        pagamentos.length = 0;
+        rows.forEach(row => {
+            const metodo = row.querySelector('.pagamento-metodo').value;
+            const valor = parseFloat(row.querySelector('.pagamento-valor').value) || 0;
+            const parcelas = parseInt(row.querySelector('.pagamento-parcelas').value) || 1;
+            pagamentos.push({ metodo, valor, parcelas });
+        });
+    }
+
+    addBtn.onclick = () => {
+        const index = list.children.length;
+        const row = document.createElement('div');
+        row.innerHTML = createPagamentoRowHTML({ metodo: 'PIX', valor: '', parcelas: 1 }, index);
+        list.appendChild(row.firstChild);
+    };
+
+    saveBtn.onclick = async () => {
+        updatePagamentos();
+        const totalPagamentos = pagamentos.reduce((s, p) => s + p.valor, 0);
+        if (Math.abs(totalPagamentos - l.valorTotal) > 0.01) {
+            showAlertModal('Erro', 'A soma dos pagamentos deve igualar o valor total.');
+            return;
+        }
+        await updateDoc(doc(db, 'lancamentos', id), { pagamentos });
+        closeModal('pagamentosModal');
+        showView('lancamentoDetailView', id);
+    };
+
+    cancelBtn.onclick = () => closeModal('pagamentosModal');
+}
+
+// --- Backup Automático ---
+setInterval(() => {
+    const backupData = {
+        lancamentos: allLancamentosData,
+        variaveis: allVariaveisData,
+        clientes: allClientesData,
+        notasCompra: allNotasCompraData,
+        timestamp: new Date().toISOString()
+    };
+    localStorage.setItem('gestao_pro_backup', JSON.stringify(backupData));
+    console.log('Backup automático salvo no localStorage.');
+}, 5 * 60 * 1000);
+
+// --- Eventos Globais ---
 appView.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!currentUserProfile || currentUserProfile.funcao === 'leitura') {
-        showAlertModal('Acesso Negado', 'Você não tem permissão para salvar ou alterar dados.');
-        return;
-    }
-    
     const form = e.target;
     const submitButton = form.querySelector('button[type="submit"]');
     if (submitButton) submitButton.disabled = true;
-
     try {
-        if (form.id === 'addVariavelForm') {
-            await addDoc(collection(db, "variaveis"), {
-                data: Timestamp.fromDate(new Date(form.querySelector('#newVariavelData').value + 'T12:00:00Z')),
-                descricao: form.querySelector('#newVariavelDescricao').value,
-                valor: parseFloat(form.querySelector('#newVariavelValor').value),
-            });
-            showAlertModal('Sucesso', 'Nova variável cadastrada!');
-            form.reset();
-        }
-        else if (form.id === 'addClienteForm') {
-            await addDoc(collection(db, "clientes"), {
-                nome: form.querySelector('#newClienteNome').value,
-                cnpj: form.querySelector('#newClienteCnpj').value,
-                endereco: form.querySelector('#newClienteEndereco').value,
-                telefone: form.querySelector('#newClienteTelefone').value,
-                email: form.querySelector('#newClienteEmail').value,
-            });
-            showAlertModal('Sucesso', 'Novo cliente cadastrado!');
-            form.reset();
-        }
-        else if (form.id === 'editClienteForm') {
-            const clienteId = form.dataset.id;
-            await updateDoc(doc(db, "clientes", clienteId), {
-                nome: form.querySelector('#editClienteNome').value,
-                cnpj: form.querySelector('#editClienteCnpj').value,
-                endereco: form.querySelector('#editClienteEndereco').value,
-                telefone: form.querySelector('#editClienteTelefone').value,
-                email: form.querySelector('#editClienteEmail').value,
-            });
-            showAlertModal('Sucesso', 'Dados do cliente atualizados!');
-            showView('clientesView');
-        }
-        else if (form.id === 'novoLancamentoForm' || form.id === 'editLancamentoForm') {
+        if (form.id === 'newLancamentoForm' || form.id === 'editLancamentoForm') {
             const isEdit = form.id === 'editLancamentoForm';
             const prefix = isEdit ? 'edit' : 'new';
             const pagamentos = JSON.parse(form.querySelector('#hidden-pagamentos-data').value || '[]');
@@ -840,11 +670,24 @@ appView.addEventListener('submit', async (e) => {
             } else {
                 taxaComissao = parseFloat(form.querySelector(`#${prefix}TaxaComissao`)?.value) || 0;
             }
+
+            const totalPagamentos = pagamentos.reduce((sum, p) => sum + (parseFloat(p.valor) || 0), 0);
+            if (Math.abs(totalPagamentos - valorTotal) > 0.01) {
+                showAlertModal('Erro de Pagamentos', 'A soma dos pagamentos deve ser igual ao valor total (tolerância de R$ 0,01).');
+                submitButton.disabled = false;
+                return;
+            }
+
+            const osValue = form.querySelector(`#${prefix}Os`).value;
+            if (osValue && !/^\d+$/.test(osValue)) {
+                showAlertModal('Aviso OS', 'O campo OS deve ser numérico. Verifique se está correto.');
+            }
+
             const data = {
                 dataEmissao: Timestamp.fromDate(new Date(form.querySelector(`#${prefix}DataEmissao`).value + 'T12:00:00Z')),
                 cliente: form.querySelector(`#${prefix}Cliente`).value,
                 numeroNf: form.querySelector(`#${prefix}NumeroNf`).value || 'NT',
-                os: form.querySelector(`#${prefix}Os`).value,
+                os: osValue,
                 descricao: form.querySelector(`#${prefix}Descricao`).value,
                 valorTotal: valorTotal,
                 taxaComissao: taxaComissao,
@@ -854,7 +697,7 @@ appView.addEventListener('submit', async (e) => {
                 pagamentos: pagamentos,
             };
 
-            if(isEdit) {
+            if (isEdit) {
                 data.editadoPor = currentUserProfile.nome;
                 data.editadoEm = Timestamp.now();
                 await updateDoc(doc(db, "lancamentos", form.dataset.id), data);
@@ -867,55 +710,9 @@ appView.addEventListener('submit', async (e) => {
                 await addDoc(collection(db, "lancamentos"), data);
                 const formContainer = document.getElementById('formContainer');
                 if (formContainer) {
-                    formContainer.style.maxHeight = null;
+                    formContainer.style.maxHeight = '0px';
                     setTimeout(() => formContainer.innerHTML = '', 500);
                 }
-            }
-        }
-        else if (form.id === 'addNotaCompraForm' || form.id === 'editNotaCompraForm') {
-            const isEdit = form.id === 'editNotaCompraForm';
-            const prefix = isEdit ? 'edit' : 'new';
-            
-            const pagamentosCompra = JSON.parse(form.querySelector('#hidden-pagamentos-data-compra').value || '[]');
-            const itens = [];
-            let valorTotal = 0;
-            form.querySelectorAll('.item-row').forEach(row => {
-                const descricao = row.querySelector('.item-descricao').value;
-                const quantidade = parseFloat(row.querySelector('.item-quantidade').value) || 1;
-                const valor = parseFloat(row.querySelector('.item-valor').value);
-                if (descricao && !isNaN(valor)) {
-                    itens.push({ descricao, quantidade, valor });
-                    valorTotal += (quantidade * valor);
-                }
-            });
-
-            if (itens.length === 0) {
-                showAlertModal('Erro', 'Você precisa adicionar pelo menos um item válido.');
-                if (submitButton) submitButton.disabled = false; return;
-            }
-
-            const data = {
-                osId: form.querySelector(`#${prefix}NotaOsId`).value,
-                numeroNf: form.querySelector(`#${prefix}NotaNumeroNf`).value,
-                dataEmissao: Timestamp.fromDate(new Date(form.querySelector(`#${prefix}NotaData`).value + 'T12:00:00Z')),
-                chaveAcesso: form.querySelector(`#${prefix}NotaChaveAcesso`).value,
-                comprador: form.querySelector(`#${prefix}NotaComprador`).value,
-                valorTotal: valorTotal,
-                itens: itens,
-                pagamentos: pagamentosCompra
-            };
-
-            if (isEdit) {
-                await updateDoc(doc(db, "notasCompra", form.dataset.id), data);
-                showAlertModal('Sucesso!', 'Nota Fiscal de Compra atualizada.');
-                showView('notasFiscaisView');
-            } else {
-                await addDoc(collection(db, "notasCompra"), data);
-                form.reset();
-                const itensContainer = document.getElementById('itens-container');
-                if(itensContainer) itensContainer.innerHTML = '';
-                document.getElementById('addItemBtn')?.click();
-                showAlertModal('Sucesso!', 'Nota Fiscal de compra salva.');
             }
         }
     } catch (error) {
@@ -940,14 +737,16 @@ appView.addEventListener('change', async (e) => {
     if (e.target.id === 'nfUploadInput') {
         const files = e.target.files;
         if (!files.length) return;
-        showAlertModal('Processando...', `Analisando ${files.length} arquivo(s). Aguarde...`);
-        let successCount = 0, errorCount = 0;
+        showAlertModal('Processando...', `<div class="loader mx-auto"></div> Analisando ${files.length} arquivo(s). Aguarde...`);
+        let successCount = 0, errorCount = 0, processed = 0;
         for (const file of files) {
+            processed++;
+            showAlertModal('Processando...', `<div class="loader mx-auto"></div> Processando ${processed}/${files.length}: ${file.name}`);
             try {
                 const imageData = await extractPdfImage(file);
                 const data = await callGeminiForAnalysis(imageData);
                 let os_pc = data.os || '';
-                if (data.pc) { os_pc = os_pc ? `${os_pc} / ${data.pc}` : data.pc; }
+                if (data.pc) os_pc = os_pc ? `${os_pc} / ${data.pc}` : data.pc;
                 const valorTotal = data.valorTotal || 0;
                 await addDoc(collection(db, "lancamentos"), {
                     dataEmissao: Timestamp.fromDate(new Date(data.dataEmissao + 'T12:00:00Z')),
@@ -955,23 +754,42 @@ appView.addEventListener('change', async (e) => {
                     numeroNf: data.numeroNf || 'NT',
                     os: os_pc,
                     descricao: data.observacoes,
-                    valorTotal, taxaComissao: 0.5, comissao: valorTotal * (0.5 / 100),
-                    faturado: null, obs: `Analisado por IA a partir de ${file.name}`,
+                    valorTotal, taxaComissao: 0.5, comissao: valorTotal * 0.005,
+                    faturado: null, obs: `IA: ${file.name}`,
                     criadoPor: currentUserProfile.nome,
                     criadoEm: Timestamp.now()
                 });
                 successCount++;
             } catch (error) {
-                console.error(`Erro ao processar ${file.name}:`, error);
+                console.error(`Erro em ${file.name}:`, error);
                 errorCount++;
             }
         }
         closeModal('alertModal');
-        showAlertModal('Concluído', `${successCount} arquivo(s) processado(s) com sucesso.${errorCount > 0 ? ` ${errorCount} falharam.` : ''}`);
-        e.target.value = '';
-    }
-    if (e.target.id === 'restoreInput') {
-        handleRestoreFile(e.target.files[0]);
+        showAlertModal('Concluído', `${successCount} processados. ${errorCount} falharam.`);
         e.target.value = '';
     }
 });
+
+// --- Login e Navegação ---
+loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    try {
+        await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+        showAlertModal('Erro de Login', 'Credenciais inválidas ou erro de rede.');
+    }
+});
+
+navLinks.forEach(link => link.addEventListener('click', (e) => {
+    e.preventDefault();
+    showView(link.dataset.view);
+}));
+
+document.getElementById('alertModalCloseButton').addEventListener('click', () => closeModal('alertModal'));
+document.getElementById('confirmModalCancelButton').addEventListener('click', () => closeModal('confirmModal'));
+document.getElementById('confirmModalConfirmButton').addEventListener('click', handleConfirm);
+
+lucide.createIcons();
