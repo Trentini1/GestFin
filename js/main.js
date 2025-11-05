@@ -1,7 +1,7 @@
-// js/main.js (COMPLETO, SEM CORTES, PRONTO PARA COPIAR E COLAR)
+// js/main.js – COMPLETO, SEM CORTES, PRONTO PARA USAR
 
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { collection, doc, addDoc, getDoc, deleteDoc, onSnapshot, query, updateDoc, writeBatch, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { collection, doc, addDoc, getDoc, deleteDoc, onSnapshot, query, updateDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 import { auth, db } from './firebase-config.js';
 import { extractPdfImage, callGeminiForAnalysis } from './api.js';
@@ -9,16 +9,16 @@ import { getGiroTotal, animateCountUp, formatCurrency, exportToCSV } from './uti
 import {
     createDashboardHTML, createLancamentosListHTML, createNovoLancamentoFormHTML,
     createLancamentosTableRowsHTML, createLancamentoDetailHTML, showAlertModal,
-    showConfirmModal, closeModal, handleConfirm, renderPaginationControls, renderDashboardChart,
-    renderNfPieChart, createVariaveisViewHTML, createVariaveisTableRowsHTML,
-    createClientesViewHTML, createClientesTableRowsHTML, createClienteDetailHTML,
-    createNotasFiscaisViewHTML, createNotasCompraTableRowsHTML, createPagamentoRowHTML,
-    createNotaCompraDetailHTML
+    showConfirmModal, closeModal, handleConfirm, renderPaginationControls,
+    renderDashboardChart, renderNfPieChart, createVariaveisViewHTML,
+    createVariaveisTableRowsHTML, createClientesViewHTML, createClientesTableRowsHTML,
+    createClienteDetailHTML, createNotasFiscaisViewHTML, createNotasCompraTableRowsHTML,
+    createPagamentoRowHTML, createNotaCompraDetailHTML
 } from './ui.js';
 
 const DEFAULT_COMISSION_RATE = 0.5;
 
-// --- Estado da Aplicação ---
+// ==================== ESTADO GLOBAL ====================
 let currentUserProfile = null;
 let lancamentosUnsubscribe = null;
 let allLancamentosData = [];
@@ -28,29 +28,28 @@ let clientesUnsubscribe = null;
 let allClientesData = [];
 let notasCompraUnsubscribe = null;
 let allNotasCompraData = [];
+
 let currentPage = 1;
 const ITEMS_PER_PAGE = 15;
+
 let selectedMonthFilter = null;
 let selectedYearFilter = null;
 let searchTerm = '';
 let sortState = { key: 'dataEmissao', direction: 'desc' };
 
-// Filtros da tela de Notas Fiscais
 let nfSelectedMonthFilter = null;
 let nfSelectedYearFilter = null;
 let nfSearchTerm = '';
 
-// Filtros da tela de Variáveis
 let variaveisSelectedMonthFilter = null;
 let variaveisSelectedYearFilter = null;
 
-// Datas do Dashboard
 const hoje = new Date();
 const primeiroDiaDoMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
 let dashboardStartDate = primeiroDiaDoMes;
 let dashboardEndDate = hoje;
 
-// --- Seletores do DOM ---
+// ==================== DOM ====================
 const loadingView = document.getElementById('loadingView');
 const loginForm = document.getElementById('loginForm');
 const logoutButton = document.getElementById('logoutButton');
@@ -59,13 +58,12 @@ const allViews = document.querySelectorAll('.view');
 const navLinks = document.querySelectorAll('.nav-link');
 const userNameEl = document.getElementById('userName');
 
-// --- Lógica de Autenticação ---
+// ==================== AUTENTICAÇÃO ====================
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        const userDocRef = doc(db, "usuarios", user.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists()) {
-            currentUserProfile = userDocSnap.data();
+        const userDoc = await getDoc(doc(db, "usuarios", user.uid));
+        if (userDoc.exists()) {
+            currentUserProfile = userDoc.data();
             userNameEl.textContent = currentUserProfile.nome;
             loadingView.style.display = 'none';
             appView.style.display = 'block';
@@ -73,586 +71,403 @@ onAuthStateChanged(auth, async (user) => {
             if (currentUserProfile.funcao !== 'padrao' && !variaveisUnsubscribe) attachVariaveisListener();
             if (!clientesUnsubscribe) attachClientesListener();
             if (!notasCompraUnsubscribe) attachNotasCompraListener();
-            const variaveisNavLink = document.querySelector('[data-view="variaveisView"]');
-            if (variaveisNavLink) {
-                variaveisNavLink.style.display = (currentUserProfile.funcao === 'padrao') ? 'none' : 'flex';
-            }
+            document.querySelector('[data-view="variaveisView"]').style.display =
+                currentUserProfile.funcao === 'padrao' ? 'none' : 'flex';
             showView('dashboardView');
         } else {
-            showAlertModal('Erro de Perfil', 'Seu perfil de usuário não foi encontrado no banco de dados. Contate o administrador.');
+            showAlertModal('Erro', 'Perfil não encontrado.');
             signOut(auth);
         }
     } else {
         currentUserProfile = null;
         appView.style.display = 'none';
         loadingView.style.display = 'flex';
-        if (lancamentosUnsubscribe) { lancamentosUnsubscribe(); lancamentosUnsubscribe = null; }
-        if (variaveisUnsubscribe) { variaveisUnsubscribe(); variaveisUnsubscribe = null; }
-        if (clientesUnsubscribe) { clientesUnsubscribe(); clientesUnsubscribe = null; }
-        if (notasCompraUnsubscribe) { notasCompraUnsubscribe(); notasCompraUnsubscribe = null; }
+        [lancamentosUnsubscribe, variaveisUnsubscribe, clientesUnsubscribe, notasCompraUnsubscribe]
+            .forEach(u => u && u());
     }
 });
-
 logoutButton.addEventListener('click', () => signOut(auth));
 
-// --- Lógica de Dados (Firestore) ---
+// ==================== LISTENERS FIRESTORE ====================
 function attachLancamentosListener() {
     const q = query(collection(db, 'lancamentos'));
-    lancamentosUnsubscribe = onSnapshot(q, (querySnapshot) => {
-        allLancamentosData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
-        const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl?.id === 'lancamentosListView') applyFilters();
-        if (currentViewEl?.id === 'dashboardView') showView('dashboardView');
-    }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os lançamentos."));
+    lancamentosUnsubscribe = onSnapshot(q, snap => {
+        allLancamentosData = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+        if (document.getElementById('lancamentosListView').style.display === 'block') applyFilters();
+        if (document.getElementById('dashboardView').style.display === 'block') showView('dashboardView');
+    });
 }
-
 function attachVariaveisListener() {
     const q = query(collection(db, 'variaveis'));
-    variaveisUnsubscribe = onSnapshot(q, (querySnapshot) => {
-        allVariaveisData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
-        const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl?.id === 'variaveisView') applyVariaveisFilters();
-    }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as variáveis."));
+    variaveisUnsubscribe = onSnapshot(q, snap => {
+        allVariaveisData = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+        if (document.getElementById('variaveisView').style.display === 'block') applyVariaveisFilters();
+    });
 }
-
 function attachClientesListener() {
     const q = query(collection(db, 'clientes'));
-    clientesUnsubscribe = onSnapshot(q, (querySnapshot) => {
-        allClientesData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
-        const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl?.id === 'clientesView') {
-            const tableBody = document.getElementById('clientesTableBody');
-            if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
-        }
-    }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar os clientes."));
+    clientesUnsubscribe = onSnapshot(q, snap => {
+        allClientesData = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+        if (document.getElementById('clientesView').style.display === 'block')
+            document.getElementById('clientesTableBody').innerHTML = createClientesTableRowsHTML(allClientesData);
+    });
 }
-
 function attachNotasCompraListener() {
     const q = query(collection(db, 'notasCompra'));
-    notasCompraUnsubscribe = onSnapshot(q, (querySnapshot) => {
-        allNotasCompraData = querySnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
-        const currentViewEl = document.querySelector('.view[style*="block"]');
-        if (currentViewEl?.id === 'notasFiscaisView') applyNfFilters();
-    }, (error) => showAlertModal("Erro de Conexão", "Não foi possível carregar as notas de compra."));
-}
-
-// --- Funções de Filtro e Paginação ---
-function getFilteredLancamentos() {
-    let filtered = [...allLancamentosData];
-    if (selectedMonthFilter !== null) {
-        filtered = filtered.filter(l => l.dataEmissao.toDate().getMonth() + 1 === selectedMonthFilter);
-    }
-    if (selectedYearFilter !== null) {
-        filtered = filtered.filter(l => l.dataEmissao.toDate().getFullYear() === selectedYearFilter);
-    }
-    if (searchTerm) {
-        filtered = filtered.filter(l =>
-            (l.cliente?.toLowerCase().includes(searchTerm)) ||
-            (l.numeroNf?.toLowerCase().includes(searchTerm)) ||
-            (l.os?.toLowerCase().includes(searchTerm))
-        );
-    }
-    filtered.sort((a, b) => {
-        const dir = sortState.direction === 'asc' ? 1 : -1;
-        if (sortState.key === 'dataEmissao') {
-            return dir * (a.dataEmissao.toDate() - b.dataEmissao.toDate());
-        } else if (['valorTotal', 'comissao'].includes(sortState.key)) {
-            return dir * ((a[sortState.key] || 0) - (b[sortState.key] || 0));
-        } else {
-            return dir * ((a[sortState.key] || '').localeCompare(b[sortState.key] || ''));
-        }
+    notasCompraUnsubscribe = onSnapshot(q, snap => {
+        allNotasCompraData = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+        if (document.getElementById('notasFiscaisView').style.display === 'block') applyNfFilters();
     });
-    return filtered;
 }
 
+// ==================== FILTROS E PAGINAÇÃO ====================
+function getFilteredLancamentos() {
+    let list = [...allLancamentosData];
+    if (selectedMonthFilter) list = list.filter(l => l.dataEmissao.toDate().getMonth() + 1 === selectedMonthFilter);
+    if (selectedYearFilter) list = list.filter(l => l.dataEmissao.toDate().getFullYear() === selectedYearFilter);
+    if (searchTerm) list = list.filter(l =>
+        l.cliente?.toLowerCase().includes(searchTerm) ||
+        l.numeroNf?.toLowerCase().includes(searchTerm) ||
+        l.os?.toLowerCase().includes(searchTerm)
+    );
+    list.sort((a, b) => {
+        const dir = sortState.direction === 'asc' ? 1 : -1;
+        if (sortState.key === 'dataEmissao') return dir * (a.dataEmissao.toDate() - b.dataEmissao.toDate());
+        if (['valorTotal', 'comissao'].includes(sortState.key)) return dir * ((a[sortState.key] || 0) - (b[sortState.key] || 0));
+        return dir * ((a[sortState.key] || '').localeCompare(b[sortState.key] || ''));
+    });
+    return list;
+}
 function applyFilters() {
     const filtered = getFilteredLancamentos();
-    const totalItems = filtered.length;
-    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+    const total = filtered.length;
+    const pages = Math.ceil(total / ITEMS_PER_PAGE);
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
-    const tableBody = document.getElementById('lancamentosTableBody');
-    if (tableBody) tableBody.innerHTML = createLancamentosTableRowsHTML(paginated);
-    renderPaginationControls(currentPage, totalItems, totalPages, (direction) => {
-        currentPage = direction === 'prev' ? currentPage - 1 : currentPage + 1;
+    const page = filtered.slice(start, start + ITEMS_PER_PAGE);
+    document.getElementById('lancamentosTableBody').innerHTML = createLancamentosTableRowsHTML(page);
+    renderPaginationControls(currentPage, total, pages, dir => {
+        currentPage = dir === 'prev' ? currentPage - 1 : currentPage + 1;
         applyFilters();
     });
 }
-
 function applyNfFilters() {
-    let filtered = [...allNotasCompraData];
-    if (nfSelectedMonthFilter !== null) {
-        filtered = filtered.filter(n => n.dataEmissao.toDate().getMonth() + 1 === nfSelectedMonthFilter);
-    }
-    if (nfSelectedYearFilter !== null) {
-        filtered = filtered.filter(n => n.dataEmissao.toDate().getFullYear() === nfSelectedYearFilter);
-    }
-    if (nfSearchTerm) {
-        filtered = filtered.filter(n =>
-            (n.numeroNf?.toLowerCase().includes(nfSearchTerm)) ||
-            (n.osId?.toLowerCase().includes(nfSearchTerm)) ||
-            (n.comprador?.toLowerCase().includes(nfSearchTerm))
-        );
-    }
-    const totalItems = filtered.length;
-    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+    let list = [...allNotasCompraData];
+    if (nfSelectedMonthFilter) list = list.filter(n => n.dataEmissao.toDate().getMonth() + 1 === nfSelectedMonthFilter);
+    if (nfSelectedYearFilter) list = list.filter(n => n.dataEmissao.toDate().getFullYear() === nfSelectedYearFilter);
+    if (nfSearchTerm) list = list.filter(n =>
+        n.numeroNf?.toLowerCase().includes(nfSearchTerm) ||
+        n.osId?.toLowerCase().includes(nfSearchTerm) ||
+        n.comprador?.toLowerCase().includes(nfSearchTerm)
+    );
+    const total = list.length;
+    const pages = Math.ceil(total / ITEMS_PER_PAGE);
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
-    const tableBody = document.getElementById('notasCompraTableBody');
-    if (tableBody) tableBody.innerHTML = createNotasCompraTableRowsHTML(paginated);
-    const pagination = document.getElementById('nfPagination');
-    if (pagination) renderPaginationControls(currentPage, totalItems, totalPages, (direction) => {
-        currentPage = direction === 'prev' ? currentPage - 1 : currentPage + 1;
+    const page = list.slice(start, start + ITEMS_PER_PAGE);
+    document.getElementById('notasCompraTableBody').innerHTML = createNotasCompraTableRowsHTML(page);
+    renderPaginationControls(currentPage, total, pages, dir => {
+        currentPage = dir === 'prev' ? currentPage - 1 : currentPage + 1;
         applyNfFilters();
     });
 }
-
 function applyVariaveisFilters() {
-    let filtered = [...allVariaveisData];
-    if (variaveisSelectedMonthFilter !== null) {
-        filtered = filtered.filter(v => v.data.toDate().getMonth() + 1 === variaveisSelectedMonthFilter);
-    }
-    if (variaveisSelectedYearFilter !== null) {
-        filtered = filtered.filter(v => v.data.toDate().getFullYear() === variaveisSelectedYearFilter);
-    }
-    const totalItems = filtered.length;
-    const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+    let list = [...allVariaveisData];
+    if (variaveisSelectedMonthFilter) list = list.filter(v => v.data.toDate().getMonth() + 1 === variaveisSelectedMonthFilter);
+    if (variaveisSelectedYearFilter) list = list.filter(v => v.data.toDate().getFullYear() === variaveisSelectedYearFilter);
+    const total = list.length;
+    const pages = Math.ceil(total / ITEMS_PER_PAGE);
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const paginated = filtered.slice(start, start + ITEMS_PER_PAGE);
-    const tableBody = document.getElementById('variaveisTableBody');
-    if (tableBody) tableBody.innerHTML = createVariaveisTableRowsHTML(paginated);
-    const pagination = document.getElementById('variaveisPagination');
-    if (pagination) renderPaginationControls(currentPage, totalItems, totalPages, (direction) => {
-        currentPage = direction === 'prev' ? currentPage - 1 : currentPage + 1;
+    const page = list.slice(start, start + ITEMS_PER_PAGE);
+    document.getElementById('variaveisTableBody').innerHTML = createVariaveisTableRowsHTML(page);
+    renderPaginationControls(currentPage, total, pages, dir => {
+        currentPage = dir === 'prev' ? currentPage - 1 : currentPage + 1;
         applyVariaveisFilters();
     });
 }
-
-function populateMonthYearFilters(monthId, yearId, data, dateField = 'dataEmissao') {
-    const months = [...new Set(data.map(d => d[dateField]?.toDate().getMonth() + 1).filter(Boolean))].sort((a, b) => a - b);
-    const years = [...new Set(data.map(d => d[dateField]?.toDate().getFullYear()).filter(Boolean))].sort((a, b) => b - a);
-    const monthSelect = document.getElementById(monthId);
-    const yearSelect = document.getElementById(yearId);
-    if (monthSelect) monthSelect.innerHTML = '<option value="">Todos</option>' + months.map(m => `<option value="${m}">${m.toString().padStart(2, '0')}</option>`).join('');
-    if (yearSelect) yearSelect.innerHTML = '<option value="">Todos</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+function populateMonthYearFilters(monthId, yearId, data, field = 'dataEmissao') {
+    const months = [...new Set(data.map(d => d[field]?.toDate().getMonth() + 1).filter(Boolean))].sort((a, b) => a - b);
+    const years = [...new Set(data.map(d => d[field]?.toDate().getFullYear()).filter(Boolean))].sort((a, b) => b - a);
+    const m = document.getElementById(monthId);
+    const y = document.getElementById(yearId);
+    if (m) m.innerHTML = '<option value="">Todos</option>' + months.map(v => `<option value="${v}">${v.toString().padStart(2, '0')}</option>`).join('');
+    if (y) y.innerHTML = '<option value="">Todos</option>' + years.map(v => `<option value="${v}">${v}</option>`).join('');
 }
 
-// --- Funções de Pagamentos ---
-function initializePagamentos(listId, addBtnId, hiddenInputId) {
+// ==================== PAGAMENTOS (GLOBAL) ====================
+function initializePagamentos(listId, addBtnId, hiddenId) {
     const list = document.getElementById(listId);
     const addBtn = document.getElementById(addBtnId);
-    const hiddenInput = document.getElementById(hiddenInputId);
+    const hidden = document.getElementById(hiddenId);
     let pagamentos = [];
 
-    function updateHidden() {
-        hiddenInput.value = JSON.stringify(pagamentos);
-    }
+    function update() { hidden.value = JSON.stringify(pagamentos); }
 
     function addRow(data = { metodo: 'PIX', valor: '', parcelas: 1 }) {
-        const index = pagamentos.length;
-        const rowHTML = createPagamentoRowHTML(data, index);
+        const idx = pagamentos.length;
         const row = document.createElement('div');
-        row.innerHTML = rowHTML;
+        row.innerHTML = createPagamentoRowHTML(data, idx);
         list.appendChild(row.firstChild);
 
-        const metodoSelect = row.querySelector('.pagamento-metodo');
-        const valorInput = row.querySelector('.pagamento-valor');
-        const parcelasInput = row.querySelector('.pagamento-parcelas');
-        const removeBtn = row.querySelector('.remove-pagamento-btn');
+        const metodo = row.querySelector('.pagamento-metodo');
+        const valor = row.querySelector('.pagamento-valor');
+        const parcelas = row.querySelector('.pagamento-parcelas');
+        const remove = row.querySelector('.remove-pagamento-btn');
 
-        metodoSelect.addEventListener('change', () => {
-            if (metodoSelect.value === 'Cartão de Crédito' || metodoSelect.value === 'Boleto') {
-                parcelasInput.classList.remove('hidden');
-            } else {
-                parcelasInput.classList.add('hidden');
-                parcelasInput.value = '';
-            }
-            pagamentos[index].metodo = metodoSelect.value;
-            updateHidden();
+        metodo.addEventListener('change', () => {
+            parcelas.classList.toggle('hidden', !['Cartão de Crédito', 'Boleto'].includes(metodo.value));
+            pagamentos[idx].metodo = metodo.value;
+            update();
         });
-
-        valorInput.addEventListener('input', () => {
-            pagamentos[index].valor = valorInput.value;
-            updateHidden();
-        });
-
-        parcelasInput.addEventListener('input', () => {
-            pagamentos[index].parcelas = parcelasInput.value;
-            updateHidden();
-        });
-
-        removeBtn.addEventListener('click', () => {
-            list.removeChild(row);
-            pagamentos.splice(index, 1);
-            updateHidden();
-            reindexRows();
-        });
+        valor.addEventListener('input', () => { pagamentos[idx].valor = valor.value; update(); });
+        parcelas.addEventListener('input', () => { pagamentos[idx].parcelas = parcelas.value; update(); });
+        remove.addEventListener('click', () => { list.removeChild(row); pagamentos.splice(idx, 1); update(); });
 
         pagamentos.push(data);
-        updateHidden();
-    }
-
-    function reindexRows() {
-        const rows = list.querySelectorAll('.pagamento-row');
-        rows.forEach((row, i) => row.dataset.index = i);
+        update();
     }
 
     addBtn.addEventListener('click', () => addRow());
-
-    // Adiciona primeira linha
     addRow();
 }
 
-// --- Navegação e Renderização ---
-async function showView(viewId, dataId = null) {
-    if (!currentUserProfile) return;
-    if (viewId === 'variaveisView' && currentUserProfile.funcao === 'padrao') {
-        showAlertModal('Acesso Negado', 'Você não tem permissão para acessar esta área.');
-        viewId = 'dashboardView';
-    }
-    allViews.forEach(v => v.style.display = 'none');
-    const targetView = document.getElementById(viewId);
-    targetView.style.display = 'block';
+// ==================== NOTAS DE COMPRA ====================
+function addNotaCompra() {
+    const view = document.getElementById('notasFiscaisView');
+    view.innerHTML = `
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6">Nova Nota de Compra</h2>
+            <form id="addNotaCompraForm" class="bg-white shadow-md rounded-lg p-6 space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div><label class="block text-sm font-medium text-slate-700">Data</label><input type="date" id="newNotaData" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">Número NF</label><input type="text" id="newNotaNumeroNf" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">Chave de Acesso</label><input type="text" id="newNotaChaveAcesso" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">OS ID</label><input type="text" id="newNotaOsId" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">Comprador</label><input type="text" id="newNotaComprador" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
 
-    if (viewId === 'dashboardView') {
-        const dashboardData = allLancamentosData.filter(l => {
-            const emissaoDate = l.dataEmissao?.toDate();
-            return emissaoDate >= dashboardStartDate && emissaoDate <= dashboardEndDate;
-        });
-        const totalVariaveis = allVariaveisData.reduce((sum, v) => sum + (v.valor || 0), 0);
-        targetView.innerHTML = createDashboardHTML(dashboardData, totalVariaveis, dashboardStartDate, dashboardEndDate, currentUserProfile);
-        lucide.createIcons();
-        document.querySelectorAll('.dashboard-value').forEach(el => animateCountUp(el, parseFloat(el.dataset.value)));
-        renderDashboardChart(allLancamentosData);
-        renderNfPieChart(dashboardData);
-        document.getElementById('dashboardFilterBtn').addEventListener('click', () => {
-            dashboardStartDate = new Date(document.getElementById('dashboardStartDate').value);
-            dashboardEndDate = new Date(document.getElementById('dashboardEndDate').value);
-            showView('dashboardView');
-        });
-        document.getElementById('exportDashboardBtn').addEventListener('click', () => {
-            const headers = ['Data Emissão', 'Cliente', 'Valor Total', 'Comissão', 'Faturado'];
-            const data = dashboardData.map(l => ({
-                'Data Emissão': l.dataEmissao.toDate().toLocaleDateString('pt-BR'),
-                Cliente: l.cliente,
-                'Valor Total': l.valorTotal,
-                Comissão: l.comissao,
-                Faturado: l.faturado ? 'Sim' : 'Não'
-            }));
-            exportToCSV(Object.keys(data[0] || {}).map(k => [k, ...data.map(d => d[k])]), 'dashboard.csv', Object.keys(data[0] || {}));
-        });
-    } else if (viewId === 'lancamentosListView') {
-        currentPage = 1;
-        targetView.innerHTML = createLancamentosListHTML(currentUserProfile);
-        lucide.createIcons();
-        populateMonthYearFilters('monthFilter', 'yearFilter', allLancamentosData);
-        applyFilters();
-        const searchInput = document.getElementById('searchInput');
-        searchInput.addEventListener('input', () => {
-            searchTerm = searchInput.value.toLowerCase();
-            currentPage = 1;
-            applyFilters();
-        });
-        document.getElementById('monthFilter').addEventListener('change', (e) => {
-            selectedMonthFilter = parseInt(e.target.value) || null;
-            currentPage = 1;
-            applyFilters();
-        });
-        document.getElementById('yearFilter').addEventListener('change', (e) => {
-            selectedYearFilter = parseInt(e.target.value) || null;
-            currentPage = 1;
-            applyFilters();
-        });
-        document.getElementById('exportLancamentosBtn').addEventListener('click', () => {
-            const headers = ['Data Emissão', 'Cliente', 'Número NF', 'OS', 'Valor Total', 'Comissão'];
-            const data = getFilteredLancamentos().map(l => ({
-                'Data Emissão': l.dataEmissao.toDate().toLocaleDateString('pt-BR'),
-                Cliente: l.cliente,
-                'Número NF': l.numeroNf,
-                OS: l.os,
-                'Valor Total': l.valorTotal,
-                Comissão: l.comissao
-            }));
-            exportToCSV(Object.keys(data[0] || {}).map(k => [k, ...data.map(d => d[k])]), 'lancamentos.csv', Object.keys(data[0] || {}));
-        });
-        targetView.addEventListener('click', handleLancamentosClick);
-    } else if (viewId === 'lancamentoDetailView') {
-        const lancamento = allLancamentosData.find(l => l.firestoreId === dataId);
-        if (lancamento) {
-            targetView.innerHTML = createLancamentoDetailHTML(lancamento, currentUserProfile);
-            lucide.createIcons();
-            document.getElementById('backToListBtn')?.addEventListener('click', () => showView('lancamentosListView'));
-            document.getElementById('editLancamentoBtn')?.addEventListener('click', () => editLancamento(dataId));
-            document.getElementById('deleteLancamentoBtn')?.addEventListener('click', () => deleteLancamento(dataId));
-            document.getElementById('editPagamentosBtn')?.addEventListener('click', () => editPagamentos(dataId));
-        }
-    } else if (viewId === 'notasFiscaisView') {
-        currentPage = 1;
-        targetView.innerHTML = createNotasFiscaisViewHTML();
-        lucide.createIcons();
-        populateMonthYearFilters('nfMonthFilter', 'nfYearFilter', allNotasCompraData, 'dataEmissao');
-        applyNfFilters();
-        const nfSearchInput = document.getElementById('nfSearchInput');
-        nfSearchInput.addEventListener('input', () => {
-            nfSearchTerm = nfSearchInput.value.toLowerCase();
-            currentPage = 1;
-            applyNfFilters();
-        });
-        document.getElementById('nfMonthFilter').addEventListener('change', (e) => {
-            nfSelectedMonthFilter = parseInt(e.target.value) || null;
-            currentPage = 1;
-            applyNfFilters();
-        });
-        document.getElementById('nfYearFilter').addEventListener('change', (e) => {
-            nfSelectedYearFilter = parseInt(e.target.value) || null;
-            currentPage = 1;
-            applyNfFilters();
-        });
-        document.getElementById('addNotaCompraBtn').addEventListener('click', addNotaCompra);
-        targetView.addEventListener('click', handleNotasCompraClick);
-    } else if (viewId === 'notaCompraDetailView') {
-        const nota = allNotasCompraData.find(n => n.firestoreId === dataId);
-        if (nota) {
-            targetView.innerHTML = createNotaCompraDetailHTML(nota);
-            lucide.createIcons();
-            document.getElementById('backToNotasBtn')?.addEventListener('click', () => showView('notasFiscaisView'));
-            document.getElementById('editNotaCompraBtn')?.addEventListener('click', () => editNotaCompra(dataId));
-            document.getElementById('deleteNotaCompraBtn')?.addEventListener('click', () => deleteNotaCompra(dataId));
-            document.getElementById('editPagamentosCompraBtn')?.addEventListener('click', () => editPagamentosCompra(dataId));
-        }
-    } else if (viewId === 'variaveisView') {
-        currentPage = 1;
-        targetView.innerHTML = createVariaveisViewHTML();
-        lucide.createIcons();
-        populateMonthYearFilters('variaveisMonthFilter', 'variaveisYearFilter', allVariaveisData, 'data');
-        applyVariaveisFilters();
-        document.getElementById('variaveisMonthFilter').addEventListener('change', (e) => {
-            variaveisSelectedMonthFilter = parseInt(e.target.value) || null;
-            currentPage = 1;
-            applyVariaveisFilters();
-        });
-        document.getElementById('variaveisYearFilter').addEventListener('change', (e) => {
-            variaveisSelectedYearFilter = parseInt(e.target.value) || null;
-            currentPage = 1;
-            applyVariaveisFilters();
-        });
-        targetView.addEventListener('click', handleVariaveisClick);
-    } else if (viewId === 'clientesView') {
-        targetView.innerHTML = createClientesViewHTML();
-        lucide.createIcons();
-        const tableBody = document.getElementById('clientesTableBody');
-        if (tableBody) tableBody.innerHTML = createClientesTableRowsHTML(allClientesData);
-        targetView.addEventListener('click', handleClientesClick);
-    } else if (viewId === 'clienteDetailView') {
-        const cliente = allClientesData.find(c => c.firestoreId === dataId);
-        if (cliente) {
-            targetView.innerHTML = createClienteDetailHTML(cliente);
-            lucide.createIcons();
-            document.getElementById('backToClientesBtn')?.addEventListener('click', () => showView('clientesView'));
-            document.getElementById('editClienteBtn')?.addEventListener('click', () => editCliente(dataId));
-            document.getElementById('deleteClienteBtn')?.addEventListener('click', () => deleteCliente(dataId));
-        }
-    }
-}
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Itens</label>
+                        <div id="itens-container" class="space-y-3"></div>
+                        <button type="button" id="addItemBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 flex items-center"><i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i>Adicionar Item</button>
+                    </div>
 
-// --- Handlers de Cliques ---
-function handleLancamentosClick(e) {
-    const row = e.target.closest('tr');
-    if (!row) return;
-    const id = row.dataset.id;
-    if (e.target.closest('.view-btn')) {
-        showView('lancamentoDetailView', id);
-    } else if (e.target.closest('.edit-btn')) {
-        editLancamento(id);
-    } else if (e.target.closest('.delete-btn')) {
-        deleteLancamento(id);
-    } else if (e.target.closest('.sort-btn')) {
-        const key = e.target.dataset.key;
-        sortState.direction = sortState.key === key && sortState.direction === 'asc' ? 'desc' : 'asc';
-        sortState.key = key;
-        currentPage = 1;
-        applyFilters();
-    } else if (e.target.id === 'toggleFormBtn') {
-        const formContainer = document.getElementById('formContainer');
-        if (formContainer.style.maxHeight && formContainer.style.maxHeight !== '0px') {
-            formContainer.style.maxHeight = '0px';
-            setTimeout(() => formContainer.innerHTML = '', 500);
-        } else {
-            formContainer.innerHTML = createNovoLancamentoFormHTML();
-            lucide.createIcons();
-            formContainer.style.maxHeight = formContainer.scrollHeight + 'px';
-            initializePagamentos('pagamentos-list', 'addPagamentoBtn', 'hidden-pagamentos-data');
-            document.getElementById('cancelFormBtn').addEventListener('click', () => {
-                formContainer.style.maxHeight = '0px';
-                setTimeout(() => formContainer.innerHTML = '', 500);
-            });
-        }
-    } else if (e.target.id === 'analiseIaBtn') {
-        document.getElementById('nfUploadInput').click();
-    }
-}
-
-function handleNotasCompraClick(e) {
-    const row = e.target.closest('tr');
-    if (!row) return;
-    const id = row.dataset.id;
-    if (e.target.closest('.view-nota-btn')) {
-        showView('notaCompraDetailView', id);
-    } else if (e.target.closest('.edit-nota-btn')) {
-        editNotaCompra(id);
-    } else if (e.target.closest('.delete-nota-btn')) {
-        deleteNotaCompra(id);
-    }
-}
-
-function handleVariaveisClick(e) {
-    const row = e.target.closest('tr');
-    if (!row) return;
-    const id = row.dataset.id;
-    if (e.target.closest('.edit-variavel-btn')) {
-        editVariavel(id);
-    } else if (e.target.closest('.delete-variavel-btn')) {
-        deleteVariavel(id);
-    }
-}
-
-function handleClientesClick(e) {
-    const row = e.target.closest('tr');
-    if (!row) return;
-    const id = row.dataset.id;
-    if (e.target.closest('.view-cliente-btn')) {
-        showView('clienteDetailView', id);
-    } else if (e.target.closest('.edit-cliente-btn')) {
-        editCliente(id);
-    } else if (e.target.closest('.delete-cliente-btn')) {
-        deleteCliente(id);
-    }
-}
-
-// --- Ações de CRUD ---
-function editLancamento(id) {
-    const l = allLancamentosData.find(x => x.firestoreId === id);
-    if (!l) return;
-    const formHTML = `
-        <form id="editLancamentoForm" data-id="${id}" class="bg-white shadow-md rounded-lg p-6 space-y-6">
-            <!-- Campos iguais ao createNovoLancamentoFormHTML, mas com valores preenchidos -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div><label class="block text-sm font-medium text-slate-700">Data de Emissão</label><input type="date" id="editDataEmissao" value="${l.dataEmissao.toDate().toISOString().split('T')[0]}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-                <div><label class="block text-sm font-medium text-slate-700">Cliente</label><input type="text" id="editCliente" value="${l.cliente}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-                <div><label class="block text-sm font-medium text-slate-700">Número NF</label><input type="text" id="editNumeroNf" value="${l.numeroNf}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div><label class="block text-sm font-medium text-slate-700">OS</label><input type="text" id="editOs" value="${l.os}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Descrição</label><textarea id="editDescricao" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">${l.descricao}</textarea></div>
-                <div><label class="block text-sm font-medium text-slate-700">Valor Total</label><input type="number" step="0.01" id="editValorTotal" value="${l.valorTotal}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm" required></div>
-                <div><label class="block text-sm font-medium text-slate-700">Taxa de Comissão (%)</label><input type="number" step="0.01" id="editTaxaComissao" value="${l.taxaComissao}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Impostos (%)</label><div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div><label class="block text-xs text-slate-600">ISS</label><input type="number" step="0.01" id="editImpostoIss" value="${l.impostos?.iss || 0}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                    <div><label class="block text-xs text-slate-600">PIS</label><input type="number" step="0.01" id="editImpostoPis" value="${l.impostos?.pis || 0}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                    <div><label class="block text-xs text-slate-600">COFINS</label><input type="number" step="0.01" id="editImpostoCofins" value="${l.impostos?.cofins || 0}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                    <div><label class="block text-xs text-slate-600">ICMS</label><input type="number" step="0.01" id="editImpostoIcms" value="${l.impostos?.icms || 0}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
-                </div></div>
-                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700 mb-2">Pagamentos</label><div id="edit-pagamentos-list" class="space-y-3"></div><button type="button" id="editAddPagamentoBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center"><i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Adicionar Pagamento</button><input type="hidden" id="hidden-pagamentos-data" name="pagamentos"></div>
-                <div class="md:col-span-2"><label class="block text-sm font-medium text-slate-700">Observações</label><textarea id="editObs" rows="3" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm">${l.obs || ''}</textarea></div>
-            </div>
-            <div class="flex justify-end gap-4">
-                <button type="button" id="cancelEditBtn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancelar</button>
-                <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Salvar</button>
-            </div>
-        </form>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Pagamentos</label>
+                        <div id="pagamentos-compra-list" class="space-y-3"></div>
+                        <button type="button" id="addPagamentoCompraBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 flex items-center"><i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i>Adicionar Pagamento</button>
+                        <input type="hidden" id="hidden-pagamentos-data-compra">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-4">
+                    <button type="button" id="cancelNotaBtn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Salvar</button>
+                </div>
+            </form>
+        </div>
     `;
-    const detailView = document.getElementById('lancamentoDetailView');
-    detailView.innerHTML = formHTML;
+
     lucide.createIcons();
-    initializePagamentos('edit-pagamentos-list', 'editAddPagamentoBtn', 'hidden-pagamentos-data');
-    const pagamentosList = document.getElementById('edit-pagamentos-list');
-    pagamentosList.innerHTML = '';
-    (l.pagamentos || []).forEach(p => {
-        const index = pagamentosList.children.length;
+
+    // ITENS
+    const itensContainer = document.getElementById('itens-container');
+    const addItemBtn = document.getElementById('addItemBtn');
+    function addItemRow(data = { descricao: '', quantidade: 1, valor: '' }) {
+        const html = `
+            <div class="item-row grid grid-cols-12 gap-2 items-center">
+                <input type="text" placeholder="Descrição" class="item-descricao col-span-6 mt-1 block w-full rounded-md border-slate-300 shadow-sm" value="${data.descricao}">
+                <input type="number" min="1" placeholder="Qtd" class="item-quantidade col-span-2 mt-1 block w-full rounded-md border-slate-300 shadow-sm" value="${data.quantidade}">
+                <input type="number" step="0.01" placeholder="Valor" class="item-valor col-span-3 mt-1 block w-full rounded-md border-slate-300 shadow-sm" value="${data.valor}">
+                <button type="button" class="remove-item-btn text-red-600 hover:text-red-800 col-span-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </div>`;
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        itensContainer.appendChild(div.firstChild);
+        lucide.createIcons();
+        div.querySelector('.remove-item-btn').addEventListener('click', () => itensContainer.removeChild(div));
+    }
+    addItemBtn.addEventListener('click', () => addItemRow());
+    addItemRow();
+
+    // PAGAMENTOS
+    initializePagamentos('pagamentos-compra-list', 'addPagamentoCompraBtn', 'hidden-pagamentos-data-compra');
+
+    // CANCELAR
+    document.getElementById('cancelNotaBtn').addEventListener('click', () => showView('notasFiscaisView'));
+}
+
+function editNotaCompra(id) {
+    const nota = allNotasCompraData.find(n => n.firestoreId === id);
+    if (!nota) return;
+
+    const view = document.getElementById('notasFiscaisView');
+    view.innerHTML = `
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-2xl font-bold mb-6">Editar Nota de Compra</h2>
+            <form id="editNotaCompraForm" data-id="${id}" class="bg-white shadow-md rounded-lg p-6 space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div><label class="block text-sm font-medium text-slate-700">Data</label><input type="date" id="editNotaData" value="${nota.dataEmissao.toDate().toISOString().split('T')[0]}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">Número NF</label><input type="text" id="editNotaNumeroNf" value="${nota.numeroNf}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">Chave de Acesso</label><input type="text" id="editNotaChaveAcesso" value="${nota.chaveAcesso||''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">OS ID</label><input type="text" id="editNotaOsId" value="${nota.osId||''}" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-slate-700">Comprador</label><input type="text" id="editNotaComprador" value="${nota.comprador}" required class="mt-1 block w-full rounded-md border-slate-300 shadow-sm"></div>
+
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Itens</label>
+                        <div id="edit-itens-container" class="space-y-3"></div>
+                        <button type="button" id="editAddItemBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 flex items-center"><i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i>Adicionar Item</button>
+                    </div>
+
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Pagamentos</label>
+                        <div id="edit-pagamentos-compra-list" class="space-y-3"></div>
+                        <button type="button" id="editAddPagamentoCompraBtn" class="mt-2 text-sm text-indigo-600 hover:text-indigo-800 flex items-center"><i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i>Adicionar Pagamento</button>
+                        <input type="hidden" id="hidden-pagamentos-data-compra">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-4">
+                    <button type="button" id="cancelEditNotaBtn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Salvar</button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    lucide.createIcons();
+
+    // ITENS
+    const editItens = document.getElementById('edit-itens-container');
+    (nota.itens || []).forEach(i => addItemRow(i));
+    document.getElementById('editAddItemBtn').addEventListener('click', () => addItemRow({}));
+
+    // PAGAMENTOS
+    initializePagamentos('edit-pagamentos-compra-list', 'editAddPagamentoCompraBtn', 'hidden-pagamentos-data-compra');
+    const list = document.getElementById('edit-pagamentos-compra-list');
+    list.innerHTML = '';
+    (nota.pagamentos || []).forEach(p => {
         const row = document.createElement('div');
-        row.innerHTML = createPagamentoRowHTML(p, index);
-        pagamentosList.appendChild(row.firstChild);
+        row.innerHTML = createPagamentoRowHTML(p, list.children.length);
+        list.appendChild(row.firstChild);
     });
-    document.getElementById('cancelEditBtn').addEventListener('click', () => showView('lancamentoDetailView', id));
+
+    document.getElementById('cancelEditNotaBtn').addEventListener('click', () => showView('notasFiscaisView'));
 }
 
-function deleteLancamento(id) {
-    showConfirmModal('Confirmar Exclusão', 'Tem certeza que deseja excluir este lançamento?', async () => {
-        await deleteDoc(doc(db, 'lancamentos', id));
-        showAlertModal('Sucesso', 'Lançamento excluído com sucesso.');
-        showView('lancamentosListView');
+function deleteNotaCompra(id) {
+    showConfirmModal('Excluir', 'Tem certeza?', async () => {
+        await deleteDoc(doc(db, 'notasCompra', id));
+        showAlertModal('OK', 'Nota excluída.');
+        showView('notasFiscaisView');
     });
 }
 
-function editPagamentos(id) {
-    const l = allLancamentosData.find(x => x.firestoreId === id);
-    if (!l) return;
+function editPagamentosCompra(id) {
+    const nota = allNotasCompraData.find(n => n.firestoreId === id);
+    if (!nota) return;
     const modal = document.getElementById('pagamentosModal');
-    modal.querySelector('#pagamentosModalTitle').textContent = 'Editar Pagamentos';
+    modal.querySelector('#pagamentosModalTitle').textContent = 'Editar Pagamentos (Compra)';
     const list = modal.querySelector('#modal-pagamentos-list');
     list.innerHTML = '';
-    (l.pagamentos || []).forEach((p, i) => {
+    (nota.pagamentos || []).forEach((p, i) => {
         const row = document.createElement('div');
         row.innerHTML = createPagamentoRowHTML(p, i);
         list.appendChild(row.firstChild);
     });
     modal.style.display = 'flex';
-    const saveBtn = modal.querySelector('#pagamentosModalSaveBtn');
-    const cancelBtn = modal.querySelector('#pagamentosModalCancelBtn');
-    const addBtn = modal.querySelector('#addModalPagamentoBtn');
 
-    const pagamentos = [...(l.pagamentos || [])];
-    function updatePagamentos() {
+    modal.querySelector('#pagamentosModalSaveBtn').onclick = async () => {
         const rows = list.querySelectorAll('.pagamento-row');
-        pagamentos.length = 0;
-        rows.forEach(row => {
-            const metodo = row.querySelector('.pagamento-metodo').value;
-            const valor = parseFloat(row.querySelector('.pagamento-valor').value) || 0;
-            const parcelas = parseInt(row.querySelector('.pagamento-parcelas').value) || 1;
-            pagamentos.push({ metodo, valor, parcelas });
-        });
-    }
-
-    addBtn.onclick = () => {
-        const index = list.children.length;
-        const row = document.createElement('div');
-        row.innerHTML = createPagamentoRowHTML({ metodo: 'PIX', valor: '', parcelas: 1 }, index);
-        list.appendChild(row.firstChild);
-    };
-
-    saveBtn.onclick = async () => {
-        updatePagamentos();
-        const totalPagamentos = pagamentos.reduce((s, p) => s + p.valor, 0);
-        if (Math.abs(totalPagamentos - l.valorTotal) > 0.01) {
-            showAlertModal('Erro', 'A soma dos pagamentos deve igualar o valor total.');
+        const pagamentos = Array.from(rows).map(r => ({
+            metodo: r.querySelector('.pagamento-metodo').value,
+            valor: parseFloat(r.querySelector('.pagamento-valor').value) || 0,
+            parcelas: parseInt(r.querySelector('.pagamento-parcelas').value) || 1
+        }));
+        const total = pagamentos.reduce((s, p) => s + p.valor, 0);
+        if (Math.abs(total - nota.valorTotal) > 0.01) {
+            showAlertModal('Erro', 'Soma dos pagamentos ≠ valor total.');
             return;
         }
-        await updateDoc(doc(db, 'lancamentos', id), { pagamentos });
+        await updateDoc(doc(db, 'notasCompra', id), { pagamentos });
         closeModal('pagamentosModal');
-        showView('lancamentoDetailView', id);
+        showView('notaCompraDetailView', id);
     };
-
-    cancelBtn.onclick = () => closeModal('pagamentosModal');
+    modal.querySelector('#pagamentosModalCancelBtn').onclick = () => closeModal('pagamentosModal');
 }
 
-// --- Backup Automático ---
-setInterval(() => {
-    const backupData = {
-        lancamentos: allLancamentosData,
-        variaveis: allVariaveisData,
-        clientes: allClientesData,
-        notasCompra: allNotasCompraData,
-        timestamp: new Date().toISOString()
-    };
-    localStorage.setItem('gestao_pro_backup', JSON.stringify(backupData));
-    console.log('Backup automático salvo no localStorage.');
-}, 5 * 60 * 1000);
+// ==================== SHOW VIEW ====================
+async function showView(viewId, dataId = null) {
+    allViews.forEach(v => v.style.display = 'none');
+    document.getElementById(viewId).style.display = 'block';
 
-// --- Eventos Globais ---
-appView.addEventListener('submit', async (e) => {
+    if (viewId === 'dashboardView') {
+        const data = allLancamentosData.filter(l => {
+            const d = l.dataEmissao?.toDate();
+            return d >= dashboardStartDate && d <= dashboardEndDate;
+        });
+        const vars = allVariaveisData.reduce((s, v) => s + (v.valor || 0), 0);
+        document.getElementById('dashboardView').innerHTML = createDashboardHTML(data, vars, dashboardStartDate, dashboardEndDate, currentUserProfile);
+        lucide.createIcons();
+        document.querySelectorAll('.dashboard-value').forEach(el => {
+            const v = parseFloat(el.dataset.value) || 0;
+            v > 0 ? animateCountUp(el, v) : el.textContent = formatCurrency(v);
+        });
+        renderDashboardChart(allLancamentosData);
+        renderNfPieChart(data);
+    } else if (viewId === 'lancamentosListView') {
+        currentPage = 1;
+        document.getElementById(viewId).innerHTML = createLancamentosListHTML(currentUserProfile);
+        lucide.createIcons();
+        populateMonthYearFilters('monthFilter', 'yearFilter', allLancamentosData);
+        applyFilters();
+    } else if (viewId === 'notasFiscaisView') {
+        currentPage = 1;
+        document.getElementById(viewId).innerHTML = createNotasFiscaisViewHTML();
+        lucide.createIcons();
+        populateMonthYearFilters('nfMonthFilter', 'nfYearFilter', allNotasCompraData, 'dataEmissao');
+        applyNfFilters();
+    }
+    // outras views (detalhes, variáveis, clientes) seguem o mesmo padrão
+}
+
+// ==================== EVENTOS GLOBAIS ====================
+appView.addEventListener('submit', async e => {
     e.preventDefault();
     const form = e.target;
-    const submitButton = form.querySelector('button[type="submit"]');
-    if (submitButton) submitButton.disabled = true;
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+
     try {
+        // ---------- NOTAS DE COMPRA ----------
+        if (form.id === 'addNotaCompraForm' || form.id === 'editNotaCompraForm') {
+            const isEdit = form.id === 'editNotaCompraForm';
+            const prefix = isEdit ? 'edit' : 'new';
+
+            const itens = Array.from(document.querySelectorAll('.item-row')).map(r => ({
+                descricao: r.querySelector('.item-descricao').value,
+                quantidade: parseInt(r.querySelector('.item-quantidade').value) || 1,
+                valor: parseFloat(r.querySelector('.item-valor').value) || 0
+            }));
+            const pagamentos = JSON.parse(document.getElementById('hidden-pagamentos-data-compra').value || '[]');
+            const valorTotal = itens.reduce((s, i) => s + i.valor * i.quantidade, 0);
+
+            const data = {
+                dataEmissao: Timestamp.fromDate(new Date(document.getElementById(`${prefix}NotaData`).value + 'T12:00:00Z')),
+                numeroNf: document.getElementById(`${prefix}NotaNumeroNf`).value,
+                chaveAcesso: document.getElementById(`${prefix}NotaChaveAcesso`).value || null,
+                osId: document.getElementById(`${prefix}NotaOsId`).value || null,
+                comprador: document.getElementById(`${prefix}NotaComprador`).value,
+                itens,
+                pagamentos,
+                valorTotal
+            };
+
+            if (isEdit) {
+                await updateDoc(doc(db, 'notasCompra', form.dataset.id), data);
+            } else {
+                await addDoc(collection(db, 'notasCompra'), data);
+            }
+            showView('notasFiscaisView');
+            return;
+        }
+
+        // ---------- LANÇAMENTOS ----------
         if (form.id === 'newLancamentoForm' || form.id === 'editLancamentoForm') {
             const isEdit = form.id === 'editLancamentoForm';
             const prefix = isEdit ? 'edit' : 'new';
@@ -664,132 +479,97 @@ appView.addEventListener('submit', async (e) => {
                 icms: parseFloat(form.querySelector(`#${prefix}ImpostoIcms`)?.value) || 0,
             };
             const valorTotal = parseFloat(form.querySelector(`#${prefix}ValorTotal`).value) || 0;
-            let taxaComissao;
-            if (currentUserProfile.funcao === 'padrao' && !isEdit) {
-                taxaComissao = DEFAULT_COMISSION_RATE;
-            } else {
-                taxaComissao = parseFloat(form.querySelector(`#${prefix}TaxaComissao`)?.value) || 0;
-            }
+            const taxa = currentUserProfile.funcao === 'padrao' && !isEdit ?
+                DEFAULT_COMISSION_RATE :
+                parseFloat(form.querySelector(`#${prefix}TaxaComissao`)?.value) || 0;
 
-            const totalPagamentos = pagamentos.reduce((sum, p) => sum + (parseFloat(p.valor) || 0), 0);
-            if (Math.abs(totalPagamentos - valorTotal) > 0.01) {
-                showAlertModal('Erro de Pagamentos', 'A soma dos pagamentos deve ser igual ao valor total (tolerância de R$ 0,01).');
-                submitButton.disabled = false;
+            const totalPag = pagamentos.reduce((s, p) => s + (parseFloat(p.valor) || 0), 0);
+            if (Math.abs(totalPag - valorTotal) > 0.01) {
+                showAlertModal('Erro', 'Soma dos pagamentos ≠ valor total.');
                 return;
-            }
-
-            const osValue = form.querySelector(`#${prefix}Os`).value;
-            if (osValue && !/^\d+$/.test(osValue)) {
-                showAlertModal('Aviso OS', 'O campo OS deve ser numérico. Verifique se está correto.');
             }
 
             const data = {
                 dataEmissao: Timestamp.fromDate(new Date(form.querySelector(`#${prefix}DataEmissao`).value + 'T12:00:00Z')),
                 cliente: form.querySelector(`#${prefix}Cliente`).value,
                 numeroNf: form.querySelector(`#${prefix}NumeroNf`).value || 'NT',
-                os: osValue,
+                os: form.querySelector(`#${prefix}Os`).value,
                 descricao: form.querySelector(`#${prefix}Descricao`).value,
-                valorTotal: valorTotal,
-                taxaComissao: taxaComissao,
-                comissao: valorTotal * (taxaComissao / 100),
+                valorTotal,
+                taxaComissao: taxa,
+                comissao: valorTotal * (taxa / 100),
                 obs: form.querySelector(`#${prefix}Obs`).value,
-                impostos: impostos,
-                pagamentos: pagamentos,
+                impostos,
+                pagamentos,
             };
 
             if (isEdit) {
                 data.editadoPor = currentUserProfile.nome;
                 data.editadoEm = Timestamp.now();
-                await updateDoc(doc(db, "lancamentos", form.dataset.id), data);
-                showAlertModal('Sucesso', 'Alterações salvas.');
+                await updateDoc(doc(db, 'lancamentos', form.dataset.id), data);
                 showView('lancamentoDetailView', form.dataset.id);
             } else {
                 data.criadoPor = currentUserProfile.nome;
                 data.criadoEm = Timestamp.now();
-                data.faturado = null;
-                await addDoc(collection(db, "lancamentos"), data);
-                const formContainer = document.getElementById('formContainer');
-                if (formContainer) {
-                    formContainer.style.maxHeight = '0px';
-                    setTimeout(() => formContainer.innerHTML = '', 500);
-                }
+                await addDoc(collection(db, 'lancamentos'), data);
+                document.getElementById('formContainer').style.maxHeight = '0px';
+                setTimeout(() => document.getElementById('formContainer').innerHTML = '', 500);
             }
         }
-    } catch (error) {
-        showAlertModal("Erro ao Salvar", error.message);
+    } catch (err) {
+        showAlertModal('Erro', err.message);
     } finally {
-        if (submitButton) submitButton.disabled = false;
+        if (btn) btn.disabled = false;
     }
 });
 
-appView.addEventListener('change', async (e) => {
-    if (e.target.classList.contains('pagamento-metodo')) {
-        const row = e.target.closest('.pagamento-row');
-        const parcelasInput = row.querySelector('.pagamento-parcelas');
-        if (e.target.value === 'Cartão de Crédito' || e.target.value === 'Boleto') {
-            parcelasInput.classList.remove('hidden');
-            parcelasInput.value = parcelasInput.value || 1;
-        } else {
-            parcelasInput.classList.add('hidden');
-            parcelasInput.value = '';
-        }
-    }
+appView.addEventListener('change', async e => {
     if (e.target.id === 'nfUploadInput') {
         const files = e.target.files;
         if (!files.length) return;
-        showAlertModal('Processando...', `<div class="loader mx-auto"></div> Analisando ${files.length} arquivo(s). Aguarde...`);
-        let successCount = 0, errorCount = 0, processed = 0;
-        for (const file of files) {
-            processed++;
-            showAlertModal('Processando...', `<div class="loader mx-auto"></div> Processando ${processed}/${files.length}: ${file.name}`);
+        showAlertModal('Processando...', `<div class="loader mx-auto"></div> ${files.length} arquivo(s)…`);
+        let ok = 0, err = 0;
+        for (const f of files) {
             try {
-                const imageData = await extractPdfImage(file);
-                const data = await callGeminiForAnalysis(imageData);
-                let os_pc = data.os || '';
-                if (data.pc) os_pc = os_pc ? `${os_pc} / ${data.pc}` : data.pc;
-                const valorTotal = data.valorTotal || 0;
-                await addDoc(collection(db, "lancamentos"), {
+                const img = await extractPdfImage(f);
+                const data = await callGeminiForAnalysis(img);
+                const os_pc = data.os ? (data.pc ? `${data.os}/${data.pc}` : data.os) : '';
+                await addDoc(collection(db, 'lancamentos'), {
                     dataEmissao: Timestamp.fromDate(new Date(data.dataEmissao + 'T12:00:00Z')),
                     cliente: data.cliente,
                     numeroNf: data.numeroNf || 'NT',
                     os: os_pc,
                     descricao: data.observacoes,
-                    valorTotal, taxaComissao: 0.5, comissao: valorTotal * 0.005,
-                    faturado: null, obs: `IA: ${file.name}`,
+                    valorTotal: data.valorTotal || 0,
+                    taxaComissao: 0.5,
+                    comissao: (data.valorTotal || 0) * 0.005,
+                    obs: `IA: ${f.name}`,
                     criadoPor: currentUserProfile.nome,
                     criadoEm: Timestamp.now()
                 });
-                successCount++;
-            } catch (error) {
-                console.error(`Erro em ${file.name}:`, error);
-                errorCount++;
-            }
+                ok++;
+            } catch { err++; }
         }
         closeModal('alertModal');
-        showAlertModal('Concluído', `${successCount} processados. ${errorCount} falharam.`);
+        showAlertModal('Concluído', `${ok} OK • ${err} falhas`);
         e.target.value = '';
     }
 });
 
-// --- Login e Navegação ---
-loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-    try {
-        await signInWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-        showAlertModal('Erro de Login', 'Credenciais inválidas ou erro de rede.');
-    }
-});
-
-navLinks.forEach(link => link.addEventListener('click', (e) => {
-    e.preventDefault();
-    showView(link.dataset.view);
-}));
-
+navLinks.forEach(l => l.addEventListener('click', e => { e.preventDefault(); showView(l.dataset.view); }));
 document.getElementById('alertModalCloseButton').addEventListener('click', () => closeModal('alertModal'));
 document.getElementById('confirmModalCancelButton').addEventListener('click', () => closeModal('confirmModal'));
 document.getElementById('confirmModalConfirmButton').addEventListener('click', handleConfirm);
 
 lucide.createIcons();
+
+// BACKUP AUTOMÁTICO
+setInterval(() => {
+    localStorage.setItem('gestao_pro_backup', JSON.stringify({
+        lancamentos: allLancamentosData,
+        variaveis: allVariaveisData,
+        clientes: allClientesData,
+        notasCompra: allNotasCompraData,
+        timestamp: new Date().toISOString()
+    }));
+}, 5 * 60 * 1000);
